@@ -28,6 +28,7 @@ index.php
 *~
 *.sass-cache
 package-lock.json
+.env
 
 # npm package
 *.tgz
