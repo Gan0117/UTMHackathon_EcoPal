@@ -1,0 +1,14 @@
+[
+  {
+    "id": "insight-01",
+    "type": "warning",
+    "message": "Warning: Your current spending on 'Entertainment' is 20% higher than last month. This may impact your 'Graduation Trip' goal.",
+    "predicted_shortfall": 120.00
+  },
+  {
+    "id": "insight-02",
+    "type": "praise",
+    "message": "Great job! You stayed under budget this week. Your 'Emergency Fund' tree has grown!",
+    "predicted_shortfall": 0.00
+  }
+]
