@@ -122,7 +122,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     return Scaffold(
       backgroundColor: surfaceSoil,
       
-      // 🔥 Here is your new Reusable Bottom Nav Bar!
+      extendBody: true,
       bottomNavigationBar: const EcoPalBottomBar(currentIndex: 4),
 
       body: _isLoading

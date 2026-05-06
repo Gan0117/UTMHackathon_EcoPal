@@ -68,7 +68,7 @@ class EcoPalBottomBar extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildNavItem(context, icon: Icons.abc, label: 'Garden', index: 0),
+                    _buildNavItem(context, icon: Icons.yard, label: 'Garden', index: 0),
                     _buildNavItem(context, icon: Icons.qr_code_scanner, label: 'Scanner', index: 1),
                     _buildNavItem(context, icon: Icons.pets, label: 'Pet', index: 2),
                     _buildNavItem(context, icon: Icons.analytics, label: 'Insights', index: 3),
@@ -83,7 +83,7 @@ class EcoPalBottomBar extends StatelessWidget {
     );
   }
 
-  Widget _buildNavItem(BuildContext context, {required IconData icon, required String label, required int index}) {
+  Widget _buildNavItem(BuildContext context, { IconData? icon, required String label, required int index}) {
     final bool isActive = currentIndex == index;
     const Color secondaryContainer = Color(0xFF92F7C3);
     const Color onSurfaceVariant = Color(0xFF404943);
@@ -102,7 +102,8 @@ class EcoPalBottomBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isActive ? const Color(0xFF00734D) : onSurfaceVariant),
+            if (icon != null)
+              Icon(icon, color: isActive ? const Color(0xFF00734D) : onSurfaceVariant),
             // Smoothly animates the gap between the icon and text
             AnimatedContainer(
               duration: const Duration(milliseconds: 250),
