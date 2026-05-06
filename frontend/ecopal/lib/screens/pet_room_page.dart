@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/api_service.dart';
 import 'login_page.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../widgets/floating_pet.dart';
 
 class PetRoomPage extends StatefulWidget {
   const PetRoomPage({super.key});
@@ -25,11 +26,12 @@ class _PetRoomPageState extends State<PetRoomPage> {
   // User Data State
   int _rewardPoints = 0; 
   
-  // Animation State
+  // Animation & Chat State
   String _currentState = 'idle'; 
   bool _isInteracting = false;
-  final int _oneTurnDurationMs = 1000;
+  String? _message; // 🔥 Holds the text the cat will speak
   
+  final int _oneTurnDurationMs = 1000;
   Timer? _decayTimer;
 
   @override
@@ -55,7 +57,6 @@ class _PetRoomPageState extends State<PetRoomPage> {
 
   Future<void> _loadPetData() async {
     try {
-      // Fetch both pet status and profile data simultaneously[cite: 11]
       final petData = await ApiService.getPetStatus();
       final profileData = await ApiService.getProfile(); 
       
@@ -66,7 +67,6 @@ class _PetRoomPageState extends State<PetRoomPage> {
         _hunger = petData['hunger_level'] ?? 50;
         _happiness = petData['happiness_level'] ?? 80;
         
-        // Dynamically fetch reward points from profiles.json[cite: 10, 11]
         _rewardPoints = profileData['reward_points'] ?? 0; 
         _isLoading = false;
       });
@@ -85,7 +85,7 @@ class _PetRoomPageState extends State<PetRoomPage> {
       setState(() {
         _name = 'Demo Pet';
         _species = 'Tabby';
-        _rewardPoints = 0; // Fallback if file isn't found
+        _rewardPoints = 0; 
         _isLoading = false;
       });
     }
@@ -113,6 +113,17 @@ class _PetRoomPageState extends State<PetRoomPage> {
     return 'widgets/$folder1/$folder2/$prefix$_currentState.gif';
   }
 
+  // 🔥 Helper function for the cat to speak
+  void _speak(String text) {
+    setState(() => _message = text);
+    // Auto-hide the message after 4 seconds
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted && _message == text) {
+        setState(() => _message = null);
+      }
+    });
+  }
+
   void _handleTap() async {
     if (_isInteracting || _isLoading) return; 
     
@@ -134,16 +145,7 @@ class _PetRoomPageState extends State<PetRoomPage> {
   }
 
   void _showInsufficientPointsMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Not enough points (50 required)!\n💡 Tip: Earn more points by maintaining a "Healthy" spending behavior!',
-          style: TextStyle(fontSize: 14),
-        ),
-        backgroundColor: Colors.redAccent,
-        duration: Duration(seconds: 4), 
-      ),
-    );
+    _speak('Meow! Not enough points (50 required)!\n💡 Tip: Keep a "Healthy" spending grade!');
   }
 
   void _handleFeed() async {
@@ -180,6 +182,7 @@ class _PetRoomPageState extends State<PetRoomPage> {
       setState(() {
         _currentState = 'happy'; 
       });
+      _speak("Yay! I leveled up!"); 
       await Future.delayed(Duration(milliseconds: _oneTurnDurationMs * 2)); 
     }
 
@@ -274,7 +277,7 @@ class _PetRoomPageState extends State<PetRoomPage> {
                     ),
                   ),
 
-                  // --- CENTER: THE PET ---
+                  // --- CENTER: THE PET & CHATBOX ---
                   DragTarget<String>(
                     onAcceptWithDetails: (details) {
                       if (details.data == 'fish_food') {
@@ -282,19 +285,55 @@ class _PetRoomPageState extends State<PetRoomPage> {
                       }
                     },
                     builder: (context, candidateData, rejectedData) {
-                      return GestureDetector(
-                        onTap: _handleTap,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Image.asset(
-                            _currentGifPath, 
-                            key: ValueKey<String>(_currentGifPath), 
-                            width: 180, 
-                            height: 180,
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.none, 
+                      // 🔥 Replaced Column with Stack to prevent layout shifting
+                      return Stack(
+                        clipBehavior: Clip.none, // Allows the bubble to overflow upwards
+                        alignment: Alignment.center,
+                        children: [
+                          // The Pet Asset
+                          GestureDetector(
+                            onTap: _handleTap,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child: Image.asset(
+                                _currentGifPath, 
+                                key: ValueKey<String>(_currentGifPath), 
+                                width: 180, 
+                                height: 180,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.none, 
+                              ),
+                            ),
                           ),
-                        ),
+                          
+                          // 🔥 The Chat Bubble UI overlays on top of the pet/HUD
+                          if (_message != null)
+                            Positioned(
+                              bottom: 160, // Floats just above the pet
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                constraints: const BoxConstraints(maxWidth: 250),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.95),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(16),
+                                    topRight: Radius.circular(16),
+                                    bottomLeft: Radius.circular(16),
+                                    bottomRight: Radius.circular(4), // Gives it a speech-bubble tail look
+                                  ),
+                                  border: Border.all(color: const Color(0xFF0F5238).withOpacity(0.2)),
+                                  boxShadow: [
+                                    BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4))
+                                  ],
+                                ),
+                                child: Text(
+                                  _message!,
+                                  style: const TextStyle(color: Color(0xFF0F5238), fontWeight: FontWeight.bold, fontSize: 14),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),

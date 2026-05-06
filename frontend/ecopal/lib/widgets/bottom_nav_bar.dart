@@ -46,6 +46,7 @@ class EcoPalBottomBar extends StatelessWidget {
     
     // Outer container provides the drop shadow
     return Container(
+      // 🔥 Add mainAxisSize constraint to prevent it from forcing excess height
       decoration: BoxDecoration(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         boxShadow: [
@@ -62,7 +63,9 @@ class EcoPalBottomBar extends StatelessWidget {
               color: surfaceContainer.withOpacity(0.30),
               border: Border(top: BorderSide(color: outlineVariant.withOpacity(0.3))),
             ),
+            // 🔥 FIX: Set top to false so it stops adding the phone notch padding to the top of the bar!
             child: SafeArea(
+              top: false, 
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                 child: Row(
@@ -93,7 +96,7 @@ class EcoPalBottomBar extends StatelessWidget {
       // AnimatedContainer smoothly morphs the padding and background color
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut, // 🔥 Smooth swelling curve
+        curve: Curves.easeInOut, // Smooth swelling curve
         padding: isActive ? const EdgeInsets.symmetric(horizontal: 20, vertical: 8) : const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: isActive ? secondaryContainer : Colors.transparent,
@@ -110,7 +113,7 @@ class EcoPalBottomBar extends StatelessWidget {
               curve: Curves.easeInOut,
               height: isActive ? 2 : 4,
             ),
-            // 🔥 AnimatedDefaultTextStyle smoothly tweens the font size & weight!
+            // AnimatedDefaultTextStyle smoothly tweens the font size & weight!
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeInOut,
