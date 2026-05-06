@@ -1,7 +1,7 @@
 {
   "id": "pet-001",
   "name": "Mochi",
-  "species": "Pixel Cat",
+  "species": "Tabby",
   "level": 1,
   "hunger_level": 80,
   "happiness_level": 95,

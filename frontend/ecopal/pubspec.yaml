@@ -64,6 +64,10 @@ flutter:
   assets:
       - widgets/
       - assets/backend/
+      - widgets/orange/cat/
+      - widgets/orange/kitten/
+      - widgets/tabby/cat/
+      - widgets/tabby/kitten/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

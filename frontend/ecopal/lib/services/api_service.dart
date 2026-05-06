@@ -6,7 +6,7 @@ import 'package:flutter/services.dart' show rootBundle; // Required to load loca
 class ApiService {
   // 🔥 THE MASTER TOGGLE 🔥
   // Set to true to load from local JSON files. Set to false to use the FastAPI backend.
-  static bool isMockData = false;
+  static bool isMockData = true;
 
   static const String baseUrl = 'http://127.0.0.1:8000';
 
@@ -22,7 +22,7 @@ class ApiService {
   static Future<String> getRealityCheck() async {
     if (isMockData) {
       // Load mock data
-      final String jsonString = await rootBundle.loadString('assets/backend/ai_insights.json');
+      final String jsonString = await rootBundle.loadString('assets/backend/data/ai_insights.json');
       final List<dynamic> data = jsonDecode(jsonString);
       return data[0]['message']; // Return the first warning message as a test
     }

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'pet_room_page.dart';
 import 'package:flutter/foundation.dart';
+import 'pet_selection_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -85,12 +86,11 @@ Future<void> _googleSignIn() async {
   }
 }
 
-
   void _routeToPetRoom() {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const PetRoomPage()),
+        MaterialPageRoute(builder: (context) => const PetSelectionPage()),
       );
     }
   }
@@ -169,7 +169,7 @@ Future<void> _googleSignIn() async {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                           onPressed: () => _handleAuth(false), 
-                          child: const Text('Create Ecosystem', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          child: const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(height: 12),
