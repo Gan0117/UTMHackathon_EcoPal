@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'pet_room_page.dart';
 import 'package:flutter/foundation.dart';
 
 class LoginPage extends StatefulWidget {
@@ -16,82 +15,86 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // --- STANDARD EMAIL AUTH ---
-  Future<void> _handleAuth(bool isLogin) async {
+  // --- SIGN UP FUNCTION ---
+  Future<void> _signUp() async {
     setState(() => _isLoading = true);
     try {
-      if (isLogin) {
-        await Supabase.instance.client.auth.signInWithPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-        );
-      } else {
-        await Supabase.instance.client.auth.signUp(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+      await Supabase.instance.client.auth.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      
+      // Show verification message instead of navigating
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Success! Please check your email to verify your account.'),
+            backgroundColor: Color(0xFF0F5238),
+            duration: Duration(seconds: 5),
+          ),
         );
       }
-      
-      _routeToPetRoom();
     } on AuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('An unexpected error occurred')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('An unexpected error occurred')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- LOG IN FUNCTION ---
+  Future<void> _login() async {
+    setState(() => _isLoading = true);
+    try {
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      // No manual navigation here! The AuthGate in main.dart handles it automatically.
+    } on AuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('An unexpected error occurred')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   // --- GOOGLE SIGN IN AUTH ---
-Future<void> _googleSignIn() async {
-  setState(() => _isLoading = true);
-  try {
-    if (kIsWeb) {
-      // ✅ Web: Use Supabase OAuth redirect (no google_sign_in package needed)
-      await Supabase.instance.client.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: Uri.base.origin, // automatically uses current localhost/domain
-      );
-      // No manual routing needed — Supabase handles the redirect back
-    } else {
-      // ✅ Mobile (Android/iOS): Use google_sign_in package
-      const webClientId = '696185186578-07d6faaln1eio2ppnlkfg5tjtnd8deld.apps.googleusercontent.com';
+  Future<void> _googleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      if (kIsWeb) {
+        await Supabase.instance.client.auth.signInWithOAuth(
+          OAuthProvider.google,
+          redirectTo: Uri.base.origin, 
+        );
+      } else {
+        const webClientId = '696185186578-07d6faaln1eio2ppnlkfg5tjtnd8deld.apps.googleusercontent.com';
+        final GoogleSignIn googleSignIn = GoogleSignIn(serverClientId: webClientId);
+        final googleUser = await googleSignIn.signIn();
+        
+        if (googleUser == null) throw 'Sign in aborted by user.';
 
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        serverClientId: webClientId,
-      );
+        final googleAuth = await googleUser.authentication;
+        final accessToken = googleAuth.accessToken;
+        final idToken = googleAuth.idToken;
 
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) throw 'Sign in aborted by user.';
+        if (accessToken == null || idToken == null) throw 'Missing Google Auth Tokens.';
 
-      final googleAuth = await googleUser.authentication;
-      final accessToken = googleAuth.accessToken;
-      final idToken = googleAuth.idToken;
-
-      if (accessToken == null || idToken == null) throw 'Missing Google Auth Tokens.';
-
-      await Supabase.instance.client.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: accessToken,
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  } finally {
-    if (mounted) setState(() => _isLoading = false);
-  }
-}
-
-
-  void _routeToPetRoom() {
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const PetRoomPage()),
-      );
+        await Supabase.instance.client.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+          accessToken: accessToken,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -127,6 +130,10 @@ Future<void> _googleSignIn() async {
                 
                 const Text('EcoPal', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: primaryColor)),
                 const Text('NATURAL FINANCE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2, color: onSurfaceVariant)),
+                
+                // The new subtitle
+                const SizedBox(height: 8),
+                const Text('Sign up to plant your first financial ecosystem.', style: TextStyle(fontSize: 14, color: Colors.grey)),
                 const SizedBox(height: 32),
 
                 // Inputs
@@ -158,7 +165,7 @@ Future<void> _googleSignIn() async {
                 else
                   Column(
                     children: [
-                      // Email/Password Buttons
+                      // Separated Sign Up Button
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -168,11 +175,13 @@ Future<void> _googleSignIn() async {
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          onPressed: () => _handleAuth(false), 
-                          child: const Text('Create Ecosystem', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          onPressed: _signUp, 
+                          child: const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(height: 12),
+                      
+                      // Separated Login Button
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -182,7 +191,7 @@ Future<void> _googleSignIn() async {
                             side: const BorderSide(color: Colors.grey, width: 1.5),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          onPressed: () => _handleAuth(true), 
+                          onPressed: _login, 
                           child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       ),
@@ -217,7 +226,6 @@ Future<void> _googleSignIn() async {
                               side: BorderSide(color: Colors.grey.shade300),
                             ),
                           ),
-                          // A standard Google 'G' logo placeholder icon
                           icon: Image.network('https://img.icons8.com/?size=100&id=17949&format=png&color=000000', height: 24),
                           label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                           onPressed: _googleSignIn,

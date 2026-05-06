@@ -25,54 +25,43 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F5238)), // primary color
         fontFamily: 'Plus Jakarta Sans', // From your HTML design
-      ),
-      // System must route to login/signup page when starting
+      ), // Note: Removed the stray 'z' that was here!
       home: const AuthGate(),
     );
   }
 }
 
-class AuthGate extends StatefulWidget {
+// ✅ FIX: Changed from StatefulWidget to StatelessWidget
+class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<AuthGate> {
-  @override
-  void initState() {
-    super.initState();
-    _listenToAuthChanges();
-  }
-
-  void _listenToAuthChanges() {
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      final event = data.event;
-      if (!mounted) return;
-
-      if (event == AuthChangeEvent.signedIn) {
-        // ✅ Fired after Google OAuth redirect completes
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const PetRoomPage()),
-        );
-      } else if (event == AuthChangeEvent.signedOut) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-        );
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // Check if already logged in on app start (e.g. returning user)
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session != null) {
-      return const PetRoomPage();
-    }
-    return const LoginPage();
+    // ✅ FIX: Using StreamBuilder instead of Navigator
+    return StreamBuilder<AuthState>(
+      // This stream constantly listens to Supabase for login/logout events
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        
+        // 1. Show a loading spinner while checking auth state
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF0F5238)),
+            ),
+          );
+        }
+
+        // 2. Extract the session from the stream
+        final session = snapshot.data?.session;
+
+        // 3. Traffic Cop Logic: Session exists? Pet Room. No Session? Login Page.
+        if (session != null) {
+          return const PetRoomPage();
+        }
+
+        return const LoginPage();
+      },
+    );
   }
 }
