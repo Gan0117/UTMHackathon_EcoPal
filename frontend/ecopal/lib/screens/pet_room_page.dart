@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/api_service.dart';
 import 'login_page.dart';
+import '../widgets/bottom_nav_bar.dart';
 
 class PetRoomPage extends StatefulWidget {
   const PetRoomPage({super.key});
@@ -181,16 +182,19 @@ class _PetRoomPageState extends State<PetRoomPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF95D4B3),
-        title: const Text('Interact with AI Pet', style: TextStyle(color: Color(0xFF002114), fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFF002114)),
-            onPressed: _signOut,
-          )
-        ],
-      ),
+      // appBar: AppBar(
+      //   backgroundColor: const Color(0xFF95D4B3),
+      //   title: const Text('Interact with AI Pet', style: TextStyle(color: Color(0xFF002114), fontWeight: FontWeight.bold)),
+      //   actions: [
+      //     IconButton(
+      //       icon: const Icon(Icons.logout, color: Color(0xFF002114)),
+      //       onPressed: _signOut,
+      //     )
+      //   ],
+      // ),
+      extendBody: true,
+      bottomNavigationBar: const EcoPalBottomBar(currentIndex: 2),
+
       // Apply the Background GIF
       body: Container(
         decoration: const BoxDecoration(
