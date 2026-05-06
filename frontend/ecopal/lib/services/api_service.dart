@@ -51,7 +51,7 @@ class ApiService {
   // ===========================================================================
   static Future<Map<String, dynamic>> getProfile() async {
     if (isMockData) {
-      final String jsonString = await rootBundle.loadString('assets/backend/profiles.json');
+      final String jsonString = await rootBundle.loadString('assets/backend/data/profiles.json');
       return jsonDecode(jsonString); // Returns the profile object[cite: 16]
     }
 
@@ -66,7 +66,7 @@ class ApiService {
   // ===========================================================================
   static Future<List<dynamic>> getPockets() async {
     if (isMockData) {
-      final String jsonString = await rootBundle.loadString('assets/backend/pockets.json');
+      final String jsonString = await rootBundle.loadString('assets/backend/data/pockets.json');
       return jsonDecode(jsonString); // Returns the list of pockets[cite: 16]
     }
 
@@ -81,7 +81,7 @@ class ApiService {
   // ===========================================================================
   static Future<Map<String, dynamic>> getPetStatus() async {
     if (isMockData) {
-      final String jsonString = await rootBundle.loadString('assets/backend/pets.json');
+      final String jsonString = await rootBundle.loadString('assets/backend/data/pets.json');
       return jsonDecode(jsonString); // Returns the pet object[cite: 16]
     }
 
@@ -96,7 +96,7 @@ class ApiService {
   // ===========================================================================
   static Future<List<dynamic>> getTransactions() async {
     if (isMockData) {
-      final String jsonString = await rootBundle.loadString('assets/backend/transactions.json');
+      final String jsonString = await rootBundle.loadString('assets/backend/data/transactions.json');
       return jsonDecode(jsonString); // Returns list of transactions[cite: 16]
     }
 

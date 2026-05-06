@@ -1,8 +1,8 @@
 {
   "id": "pet-001",
   "name": "Mochi",
-  "species": "Tabby",
-  "level": 1,
+  "species": "Orange",
+  "level": 4,
   "hunger_level": 80,
   "happiness_level": 95,
   "last_interaction": "2026-05-05T14:20:00Z"
