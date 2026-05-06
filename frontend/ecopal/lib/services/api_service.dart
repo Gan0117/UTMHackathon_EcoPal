@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart' show rootBundle; // Required to load local JSON files
 
 class ApiService {
-  // Replace this with your actual FastAPI backend URL.
-  // If running on an Android emulator connecting to local FastAPI, use 'http://10.0.2.2:8000'
-  // If running on Web connecting to local FastAPI, use 'http://127.0.0.1:8000'
+  // 🔥 THE MASTER TOGGLE 🔥
+  // Set to true to load from local JSON files. Set to false to use the FastAPI backend.
+  static bool isMockData = false;
+
   static const String baseUrl = 'http://127.0.0.1:8000';
 
   /// Helper method to get the current Supabase session token
@@ -14,31 +16,93 @@ class ApiService {
     return session?.accessToken;
   }
 
-  /// Calls the /ai/reality-check endpoint on your FastAPI backend
+  // ===========================================================================
+  // 1. AI REALITY CHECK (Insights)
+  // ===========================================================================
   static Future<String> getRealityCheck() async {
+    if (isMockData) {
+      // Load mock data
+      final String jsonString = await rootBundle.loadString('assets/backend/ai_insights.json');
+      final List<dynamic> data = jsonDecode(jsonString);
+      return data[0]['message']; // Return the first warning message as a test
+    }
+
+    // Load real data[cite: 17]
     final token = _getAuthToken();
+    if (token == null) throw Exception('User is not logged in.');
 
-    if (token == null) {
-      throw Exception('User is not logged in.');
+    final response = await http.get(
+      Uri.parse('$baseUrl/ai/reality-check'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['message'];
+    } else {
+      throw Exception('Backend error: ${response.statusCode}');
+    }
+  }
+
+  // ===========================================================================
+  // 2. PROFILE DATA
+  // ===========================================================================
+  static Future<Map<String, dynamic>> getProfile() async {
+    if (isMockData) {
+      final String jsonString = await rootBundle.loadString('assets/backend/profiles.json');
+      return jsonDecode(jsonString); // Returns the profile object[cite: 16]
     }
 
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/ai/reality-check'), // The FastAPI endpoint[cite: 15]
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token', // Passing the token to FastAPI's HTTPBearer[cite: 15]
-        },
-      );
+    // REAL DATA IMPLEMENTATION (To be connected later)
+    final token = _getAuthToken();
+    final response = await http.get(Uri.parse('$baseUrl/profile'), headers: {'Authorization': 'Bearer $token'});
+    return jsonDecode(response.body);
+  }
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['message']; // Returns: "Hello <user_id>, I am analyzing your spending..."[cite: 15]
-      } else {
-        throw Exception('Backend error: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Failed to connect to backend: $e');
+  // ===========================================================================
+  // 3. POCKETS (Flora/Plants)
+  // ===========================================================================
+  static Future<List<dynamic>> getPockets() async {
+    if (isMockData) {
+      final String jsonString = await rootBundle.loadString('assets/backend/pockets.json');
+      return jsonDecode(jsonString); // Returns the list of pockets[cite: 16]
     }
+
+    // REAL DATA IMPLEMENTATION (To be connected later)
+    final token = _getAuthToken();
+    final response = await http.get(Uri.parse('$baseUrl/pockets'), headers: {'Authorization': 'Bearer $token'});
+    return jsonDecode(response.body);
+  }
+
+  // ===========================================================================
+  // 4. PET STATUS
+  // ===========================================================================
+  static Future<Map<String, dynamic>> getPetStatus() async {
+    if (isMockData) {
+      final String jsonString = await rootBundle.loadString('assets/backend/pets.json');
+      return jsonDecode(jsonString); // Returns the pet object[cite: 16]
+    }
+
+    // REAL DATA IMPLEMENTATION (To be connected later)
+    final token = _getAuthToken();
+    final response = await http.get(Uri.parse('$baseUrl/pet'), headers: {'Authorization': 'Bearer $token'});
+    return jsonDecode(response.body);
+  }
+
+  // ===========================================================================
+  // 5. TRANSACTIONS
+  // ===========================================================================
+  static Future<List<dynamic>> getTransactions() async {
+    if (isMockData) {
+      final String jsonString = await rootBundle.loadString('assets/backend/transactions.json');
+      return jsonDecode(jsonString); // Returns list of transactions[cite: 16]
+    }
+
+    // REAL DATA IMPLEMENTATION (To be connected later)
+    final token = _getAuthToken();
+    final response = await http.get(Uri.parse('$baseUrl/transactions'), headers: {'Authorization': 'Bearer $token'});
+    return jsonDecode(response.body);
   }
 }
