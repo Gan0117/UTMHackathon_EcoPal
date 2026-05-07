@@ -77,7 +77,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return 'widgets/$folder1/$folder2/${prefix}idle.gif';
   }
 
-  // 🔥 Goal 1: Dynamically determine which badge to show based on the streak
   String _getBadgeAsset(int streak) {
     if (streak >= 30) {
       return 'widgets/badges/gold_badge.png';
@@ -86,6 +85,83 @@ class _ProfilePageState extends State<ProfilePage> {
     } else {
       return 'widgets/badges/bronze_badge.png';
     }
+  }
+
+  // 🔥 Goal 1 & 2: Edit Username Logic using API Service
+  void _showEditNameDialog() {
+    final TextEditingController nameController = TextEditingController(text: _userName);
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white.withOpacity(0.95),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text('Edit Username', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'New Username',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: primaryColor, width: 2)),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor, 
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: isSaving ? null : () async {
+                    final newName = nameController.text.trim();
+                    if (newName.isEmpty || newName == _userName) {
+                      Navigator.pop(context);
+                      return;
+                    }
+
+                    setDialogState(() => isSaving = true);
+
+                    try {
+                      await ApiService.updateProfile({'username': newName});
+                      
+                      if (mounted) {
+                        setState(() {
+                          _userName = newName;
+                        });
+                        Navigator.pop(context); // Close the dialog
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Username updated successfully!')));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        setDialogState(() => isSaving = false);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update username.')));
+                      }
+                    }
+                  },
+                  child: isSaving 
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Save'),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
   }
 
   Future<void> _launchSupport() async {
@@ -113,7 +189,6 @@ class _ProfilePageState extends State<ProfilePage> {
           ? Center(child: CircularProgressIndicator(color: primaryColor))
           : Stack(
               children: [
-                // 🔥 Goal 3: Add the background GIF to the entire page
                 Container(
                   width: double.infinity,
                   height: double.infinity,
@@ -132,7 +207,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(20),
-                          // Made the container slightly transparent so the background GIF shows through!
                           decoration: BoxDecoration(color: Colors.white.withOpacity(0.85), borderRadius: BorderRadius.circular(16), border: Border.all(color: primaryColor.withOpacity(0.1)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
                           child: Row(
                             children: [
@@ -142,7 +216,17 @@ class _ProfilePageState extends State<ProfilePage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(_userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                    // 🔥 Updated: Username row with Edit button
+                                    Row(
+                                      children: [
+                                        Text(_userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                        const SizedBox(width: 8),
+                                        GestureDetector(
+                                          onTap: _showEditNameDialog, // Trigger Edit Dialog
+                                          child: Icon(Icons.edit, size: 16, color: Colors.grey.shade600),
+                                        ),
+                                      ],
+                                    ),
                                     const SizedBox(height: 8),
                                     Row(
                                       children: [
@@ -155,7 +239,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              // 🔥 Goal 2: Display the badge on the right side of the profile block!
                               Image.asset(
                                 _getBadgeAsset(_streak),
                                 width: 50,
