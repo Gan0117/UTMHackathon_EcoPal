@@ -2,19 +2,19 @@
   {
     "id": "insight-01",
     "type": "Unhealthy",
-    "message": "Warning: Your current spending on 'Entertainment' is 20% higher than last month. This may impact your 'Graduation Trip' goal.",
+    "message": "The rental fees is too high for your current budget. Consider looking for more affordable housing options or negotiating with your landlord.",
     "predicted_shortfall": 120.00
   },
   {
     "id": "insight-02",
-    "type": "Healthy",
-    "message": "Great job! You stayed under budget this week. Your 'Emergency Fund' tree has grown!",
-    "predicted_shortfall": 0.00
+    "type": "Moderate",
+    "message": "RM45 on entertainment is a bit high. Try to limit your entertainment expenses to RM30 per week to stay within budget.",
+    "predicted_shortfall": 80.00
   },
   {
     "id": "insight-03",
-    "type": "Moderate",
-    "message": "Great job! You stayed under budget this week. Your 'Emergency Fund' tree has grown!",
-    "predicted_shortfall": 80.00
+    "type": "Healthy",
+    "message": "Your food spending of RM12.50 is within a healthy range. Keep it up to maintain a balanced budget!",
+    "predicted_shortfall": 0.00
   }
 ]
