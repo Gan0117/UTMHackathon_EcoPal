@@ -20,12 +20,10 @@ class FloatingPetState extends State<FloatingPet> {
   // Dynamic Pet State
   String _species = '';
   int _level = 1;
-  int _happiness = 100;
   bool _isLoading = true;
 
   // AI Chatbox State
   String? _message;
-  Timer? _decayTimer;
 
   // Approximate sizes for boundary calculations
   final double _petSize = 65.0;
@@ -35,28 +33,12 @@ class FloatingPetState extends State<FloatingPet> {
   void initState() {
     super.initState();
     _loadPetData();
-
     reloadPetTrigger.addListener(_loadPetData);
-
-    // Ensure dynamic background decay runs continuously on ALL pages
-    _decayTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (!_isLoading && _happiness > 0) {
-        setState(() {
-          _happiness = (_happiness - 1).clamp(0, 100);
-        });
-
-        // Trigger the lonely message dynamically if they cross the threshold while on the page
-        if (_happiness == 49 && _message == null) {
-          speak("I feel lonely...");
-        }
-      }
-    });
   }
 
   @override
   void dispose() {
     reloadPetTrigger.removeListener(_loadPetData);
-    _decayTimer?.cancel();
     super.dispose();
   }
 
@@ -67,21 +49,8 @@ class FloatingPetState extends State<FloatingPet> {
         setState(() {
           _species = petData['species'] ?? 'Tabby';
           _level = petData['level'] ?? 1;
-          _happiness = petData['happiness_level'] ?? 100;
-
-          if (petData['last_interaction'] != null) {
-            DateTime lastInteraction = DateTime.parse(petData['last_interaction']);
-            Duration difference = DateTime.now().difference(lastInteraction);
-            int lostHappiness = difference.inHours;
-            _happiness = (_happiness - lostHappiness).clamp(0, 100);
-          }
-
           _isLoading = false;
         });
-
-        if (_happiness < 50) {
-          speak("I feel lonely...");
-        }
       }
     } catch (e) {
       if (mounted) {
@@ -110,8 +79,6 @@ class FloatingPetState extends State<FloatingPet> {
   }
 
   void _triggerAIInsight() async {
-    if (_message != null && _message != "I feel lonely...") return;
-
     setState(() => _message = "Analyzing your spending...");
 
     try {
@@ -159,9 +126,6 @@ class FloatingPetState extends State<FloatingPet> {
       ),
     );
 
-    // 🔥 FIX: Replaced Transform.translate with a full-screen SizedBox & Stack.
-    // The transparent empty space passes taps through to the app underneath,
-    // while the Positioned widget correctly updates the physical hitbox of the pet!
     return SizedBox(
       width: screenSize.width,
       height: screenSize.height,

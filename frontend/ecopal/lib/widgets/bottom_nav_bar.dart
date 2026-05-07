@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui'; // Required for the blur effect
 import '../screens/pet_room_page.dart';
 import '../screens/profile_page.dart';
+import '../screens/scanner_page.dart';
 
 class EcoPalBottomBar extends StatelessWidget {
   final int currentIndex;
@@ -13,6 +14,9 @@ class EcoPalBottomBar extends StatelessWidget {
 
     Widget page;
     switch (index) {
+      case 1: 
+        page = const ScannerPage();
+        break;
       case 2: // Index 2 is the Pet Room
         page = const PetRoomPage();
         break;
