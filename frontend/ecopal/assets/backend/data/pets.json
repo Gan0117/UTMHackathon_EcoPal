@@ -3,7 +3,6 @@
   "name": "Mochi",
   "species": "Orange",
   "level": 4,
-  "hunger_level": 80,
-  "happiness_level": 95,
+  "hunger_level": 99,
   "last_interaction": "2026-05-05T14:20:00Z"
 }
