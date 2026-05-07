@@ -98,6 +98,22 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  // 🔥 Goal 5: Ensure API service handles sending the data to backend
+  static Future<void> postTransaction(Map<String, dynamic> data) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return; 
+    }
+    
+    final token = _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/transactions'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode(data),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Backend error');
+  }
+
   // ===========================================================================
   // 6. UPDATE ACTIONS 
   // ===========================================================================
