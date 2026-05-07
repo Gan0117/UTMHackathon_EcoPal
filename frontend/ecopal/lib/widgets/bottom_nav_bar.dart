@@ -44,12 +44,10 @@ class EcoPalBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          height: 90, 
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.4), 
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -59,7 +57,7 @@ class EcoPalBottomBar extends StatelessWidget {
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.only(top: 12, bottom: 8, left: 8, right: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -78,7 +76,6 @@ class EcoPalBottomBar extends StatelessWidget {
     );
   }
 
- 
   Widget _buildNavItem(BuildContext context, {required IconData icon, required String label, required int index}) {
     final bool isActive = currentIndex == index;
     
@@ -86,35 +83,40 @@ class EcoPalBottomBar extends StatelessWidget {
     const Color activeIconColor = Color(0xFF00734D); 
     const Color inactiveIconColor = Color(0xFF404943); 
 
-    return GestureDetector(
-      onTap: () => _onItemTapped(context, index),
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isActive ? 12 : 8), 
-            decoration: BoxDecoration(
-              color: isActive ? activeBgColor : Colors.transparent,
-              shape: BoxShape.circle, 
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onItemTapped(context, index),
+        behavior: HitTestBehavior.opaque, // 确保整个区域都可以点击
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: EdgeInsets.all(isActive ? 12 : 8), 
+              decoration: BoxDecoration(
+                color: isActive ? activeBgColor : Colors.transparent,
+                shape: BoxShape.circle, 
+              ),
+              child: Icon(
+                icon,
+                size: isActive ? 26 : 24,
+                color: isActive ? activeIconColor : inactiveIconColor,
+              ),
             ),
-            child: Icon(
-              icon,
-              size: isActive ? 26 : 24,
-              color: isActive ? activeIconColor : inactiveIconColor,
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                  color: isActive ? activeIconColor : inactiveIconColor,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-              color: isActive ? activeIconColor : inactiveIconColor,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

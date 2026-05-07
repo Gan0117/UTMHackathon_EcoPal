@@ -1,54 +1,56 @@
 import 'package:flutter/material.dart';
 import '../widgets/bottom_nav_bar.dart';
 
-class GardenPage extends StatelessWidget {
+class GardenPage extends StatefulWidget {
   const GardenPage({super.key});
 
   @override
+  State<GardenPage> createState() => _GardenPageState();
+}
+
+class _GardenPageState extends State<GardenPage> {
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      
-      extendBody: true, 
-      backgroundColor: Colors.black, 
-      bottomNavigationBar: const EcoPalBottomBar(currentIndex: 0), 
+      extendBody: true,
+      backgroundColor: Colors.black,
+      bottomNavigationBar: const EcoPalBottomBar(currentIndex: 0),
       body: Stack(
         children: [
-         
+          
           Positioned.fill(
             child: Image.asset(
-              'assets/images/map.gif',
+              'assets/images/grass_farm.png',
               fit: BoxFit.cover,
             ),
           ),
 
           
           Positioned(
-            top: MediaQuery.of(context).padding.top + 20, 
+            top: MediaQuery.of(context).padding.top + 20,
             right: 16,
             child: Container(
-              
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                
-                color: Colors.white.withOpacity(0.9), 
-                borderRadius: BorderRadius.circular(20), 
+                color: Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1), 
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
                 ],
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end, 
-                mainAxisSize: MainAxisSize.min, 
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: const [
                   Text(
                     'SAFE TO SPEND',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey, 
+                      color: Colors.grey,
                       letterSpacing: 1.5,
                       fontWeight: FontWeight.bold,
                     ),
@@ -59,7 +61,7 @@ class GardenPage extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF1B5E20), 
+                      color: Colors.black,
                     ),
                   ),
                 ],

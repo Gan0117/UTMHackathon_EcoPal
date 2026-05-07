@@ -71,6 +71,7 @@ flutter:
       - widgets/tabby/cat/
       - widgets/tabby/kitten/
       - assets/images/map.gif
+      - assets/images/grass_farm.png
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 
