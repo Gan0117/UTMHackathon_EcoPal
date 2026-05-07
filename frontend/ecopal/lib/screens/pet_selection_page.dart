@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'pet_room_page.dart';
+import '../services/api_service.dart';
+import '../widgets/floating_pet.dart';
 
 class PetSelectionPage extends StatefulWidget {
   const PetSelectionPage({super.key});
@@ -12,13 +14,54 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
   // Variables to hold user selection
   String? _selectedSpecies; // 'Tabby' or 'Orange'
   final TextEditingController _nameController = TextEditingController();
+  
+  bool _isLoading = true;
 
-  // Define colors from HTML Design[cite: 19]
+  // Define colors from HTML Design
   final Color primaryColor = const Color(0xFF0F5238);
   final Color surfaceSoil = const Color(0xFFFDFCF8);
   final Color surfaceContainer = const Color(0xFFECEEEA);
   final Color onSurfaceVariant = const Color(0xFF404943);
   final Color outlineVariant = const Color(0xFFBFC9C1);
+
+  @override
+  void initState() {
+    super.initState();
+
+    //hide global floating pet
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showFloatingPet.value = false;
+    });
+
+    _loadExistingPet();
+  }
+
+  // 🔥 Function to fetch existing pet data from API/JSON
+  Future<void> _loadExistingPet() async {
+    try {
+      final petData = await ApiService.getPetStatus();
+      if (mounted) {
+        setState(() {
+          // Set species if it matches our options
+          if (petData['species'] == 'Tabby' || petData['species'] == 'Orange') {
+            _selectedSpecies = petData['species'];
+          }
+          
+          // Set the custom name
+          if (petData['name'] != null) {
+            _nameController.text = petData['name'];
+          }
+          
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      // If error (e.g. no existing pet), just show empty selection screen
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   void _confirmSelection() {
     if (_selectedSpecies == null) return;
@@ -39,7 +82,7 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
     };
 
     // TODO: In the future, send 'newPetData' to Supabase via ApiService here.
-    print("Pet Created: $newPetData");
+    print("Pet Created/Updated: $newPetData");
 
     // 2. Route to the Petting Page
     Navigator.pushReplacement(
@@ -66,14 +109,16 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: Column(
+        child: _isLoading 
+          ? Center(child: CircularProgressIndicator(color: primaryColor)) // Show loading spinner
+          : Column(
           children: [
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   children: [
-                    // Header[cite: 19]
+                    // Header
                     const Text(
                       'Choose Your Companion',
                       style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, height: 1.2),
@@ -86,7 +131,7 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Companion Grid[cite: 19]
+                    // Companion Grid
                     Row(
                       children: [
                         Expanded(
@@ -138,7 +183,7 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
                     
                     const SizedBox(height: 24),
 
-                    // Info Blurb[cite: 19]
+                    // Info Blurb
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -165,7 +210,7 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
               ),
             ),
 
-            // Bottom Fixed Action Area[cite: 19]
+            // Bottom Fixed Action Area
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -207,14 +252,14 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
       onTap: () {
         setState(() {
           _selectedSpecies = species;
-          _nameController.clear(); // Reset name when switching
+          // 🔥 Removed `_nameController.clear()` so if they have an existing name loaded from the API, it isn't erased when they tap!
         });
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFB1F0CE).withOpacity(0.3) : Colors.white, // primary-fixed transparent
+          color: isSelected ? const Color(0xFFB1F0CE).withOpacity(0.3) : Colors.white, 
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? primaryColor : outlineVariant.withOpacity(0.5),
@@ -241,7 +286,7 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
                   width: 50,
                   height: 50,
                   fit: BoxFit.contain,
-                  filterQuality: FilterQuality.none, // Keep pixel art sharp
+                  filterQuality: FilterQuality.none, 
                 ),
               ),
             ),

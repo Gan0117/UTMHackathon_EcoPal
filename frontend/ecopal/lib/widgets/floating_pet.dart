@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/api_service.dart';
 
+// Global controllers to manage the pet's visibility and data state from ANY page
+final ValueNotifier<bool> showFloatingPet = ValueNotifier<bool>(false);
+final ValueNotifier<int> reloadPetTrigger = ValueNotifier<int>(0);
+
 class FloatingPet extends StatefulWidget {
   const FloatingPet({super.key});
 
@@ -26,12 +30,13 @@ class FloatingPetState extends State<FloatingPet> {
   // Approximate sizes for boundary calculations
   final double _petSize = 65.0;
   final double _bubbleMaxWidth = 220.0;
-  final double _bubbleHeight = 70.0; // approximate bubble height
 
   @override
   void initState() {
     super.initState();
     _loadPetData();
+
+    reloadPetTrigger.addListener(_loadPetData);
 
     // Ensure dynamic background decay runs continuously on ALL pages
     _decayTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
@@ -50,6 +55,7 @@ class FloatingPetState extends State<FloatingPet> {
 
   @override
   void dispose() {
+    reloadPetTrigger.removeListener(_loadPetData);
     _decayTimer?.cancel();
     super.dispose();
   }
@@ -116,23 +122,10 @@ class FloatingPetState extends State<FloatingPet> {
     }
   }
 
-  /// Calculates the bubble's horizontal offset relative to the pet's Positioned
-  /// origin so it never escapes the screen on either side.
-  ///
-  /// The bubble is rendered above the pet via a Stack / Positioned(bottom:…).
-  /// Its ideal position centres it over the pet, but we clamp it so that:
-  ///   • left edge  >= -_position.dx               (never past screen left)
-  ///   • right edge <= screenWidth - _position.dx  (never past screen right)
   double _bubbleLeftOffset(double screenWidth) {
-    // Ideal: centre the bubble over the pet avatar
     final double idealLeft = (_petSize - _bubbleMaxWidth) / 2;
-
-    // How far the bubble can slide left before it leaves the screen
     final double minLeft = -_position.dx;
-
-    // How far the bubble can slide right before it leaves the screen
     final double maxLeft = screenWidth - _position.dx - _bubbleMaxWidth;
-
     return idealLeft.clamp(minLeft, maxLeft);
   }
 
@@ -142,11 +135,8 @@ class FloatingPetState extends State<FloatingPet> {
 
     final Size screenSize = MediaQuery.of(context).size;
     final EdgeInsets safePadding = MediaQuery.of(context).padding;
-
-    // Estimate bottom bar height (standard icons/text padding + safe area)
     final double bottomBarHeight = 85.0 + safePadding.bottom;
 
-    // Pet avatar widget
     final Widget petAvatar = Container(
       width: _petSize,
       height: _petSize,
@@ -155,10 +145,7 @@ class FloatingPetState extends State<FloatingPet> {
         shape: BoxShape.circle,
         border: Border.all(color: const Color(0xFF0F5238), width: 2),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
-              offset: const Offset(0, 4))
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))
         ],
       ),
       child: Center(
@@ -172,79 +159,70 @@ class FloatingPetState extends State<FloatingPet> {
       ),
     );
 
-    return Positioned(
-      left: _position.dx,
-      top: _position.dy,
-      child: GestureDetector(
-        onPanUpdate: (details) {
-          setState(() {
-            double newX = _position.dx + details.delta.dx;
-            double newY = _position.dy + details.delta.dy;
-
-            // Prevent going above the top status bar or below the bottom nav bar
-            newY = newY.clamp(
-                safePadding.top,
-                screenSize.height - bottomBarHeight - _petSize);
-
-            // Prevent going off the left or right edges of the screen
-            newX = newX.clamp(0.0, screenSize.width - _petSize);
-
-            _position = Offset(newX, newY);
-          });
-        },
-        onTap: _triggerAIInsight,
-
-        // ── Stack keeps the bubble above the pet without affecting the
-        //    Positioned widget's footprint on the screen. clipBehavior is
-        //    Clip.none so the bubble can overflow the Stack bounds upward
-        //    while still being clamped to stay inside the screen.
-        child: SizedBox(
-          width: _petSize,
-          height: _petSize,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Pet avatar — fills the SizedBox exactly
-              petAvatar,
-
-              // Speech bubble — floats above the pet, screen-clamped
-              if (_message != null)
-                Positioned(
-                  bottom: _petSize + 8, // gap between bubble base and pet top
-                  left: _bubbleLeftOffset(screenSize.width),
-                  width: _bubbleMaxWidth,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.95),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(4),
+    // 🔥 FIX: Replaced Transform.translate with a full-screen SizedBox & Stack.
+    // The transparent empty space passes taps through to the app underneath,
+    // while the Positioned widget correctly updates the physical hitbox of the pet!
+    return SizedBox(
+      width: screenSize.width,
+      height: screenSize.height,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: _position.dx,
+            top: _position.dy,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque, 
+              onPanUpdate: (details) {
+                setState(() {
+                  double newX = _position.dx + details.delta.dx;
+                  double newY = _position.dy + details.delta.dy;
+                  
+                  newY = newY.clamp(safePadding.top, screenSize.height - bottomBarHeight - _petSize);
+                  newX = newX.clamp(0.0, screenSize.width - _petSize);
+                  
+                  _position = Offset(newX, newY);
+                });
+              },
+              onTap: _triggerAIInsight,
+              child: SizedBox(
+                width: _petSize,
+                height: _petSize,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    petAvatar,
+                    if (_message != null)
+                      Positioned(
+                        bottom: _petSize + 8, 
+                        left: _bubbleLeftOffset(screenSize.width),
+                        width: _bubbleMaxWidth,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.95),
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(16),
+                              topRight: Radius.circular(16),
+                              bottomLeft: Radius.circular(16),
+                              bottomRight: Radius.circular(4),
+                            ),
+                            border: Border.all(color: const Color(0xFF0F5238).withOpacity(0.2)),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4))],
+                          ),
+                          child: Text(
+                            _message!,
+                            style: const TextStyle(color: Color(0xFF0F5238), fontWeight: FontWeight.bold, fontSize: 13),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ),
-                      border: Border.all(
-                          color: const Color(0xFF0F5238).withOpacity(0.2)),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4))
-                      ],
-                    ),
-                    child: Text(
-                      _message!,
-                      style: const TextStyle(
-                          color: Color(0xFF0F5238),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                  ],
                 ),
-            ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -29,7 +29,7 @@ class _PetRoomPageState extends State<PetRoomPage> {
   // Animation & Chat State
   String _currentState = 'idle'; 
   bool _isInteracting = false;
-  String? _message; // 🔥 Holds the text the cat will speak
+  String? _message;
   
   final int _oneTurnDurationMs = 1000;
   Timer? _decayTimer;
@@ -38,6 +38,11 @@ class _PetRoomPageState extends State<PetRoomPage> {
   void initState() {
     super.initState();
     _loadPetData();
+
+    //enable global floating pet
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showFloatingPet.value = true;
+    });
 
     _decayTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (!_isInteracting && !_isLoading) {
@@ -64,8 +69,8 @@ class _PetRoomPageState extends State<PetRoomPage> {
         _name = petData['name'] ?? 'Unknown';
         _species = petData['species'] ?? 'Tabby';
         _level = petData['level'] ?? 1;
-        _hunger = petData['hunger_level'] ?? 50;
-        _happiness = petData['happiness_level'] ?? 80;
+        _hunger = petData['hunger_level'] ?? 0;
+        _happiness = petData['happiness_level'] ?? 0;
         
         _rewardPoints = profileData['reward_points'] ?? 0; 
         _isLoading = false;
@@ -113,7 +118,7 @@ class _PetRoomPageState extends State<PetRoomPage> {
     return 'widgets/$folder1/$folder2/$prefix$_currentState.gif';
   }
 
-  // 🔥 Helper function for the cat to speak
+  //cat speak
   void _speak(String text) {
     setState(() => _message = text);
     // Auto-hide the message after 4 seconds
