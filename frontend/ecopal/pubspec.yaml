@@ -38,6 +38,7 @@ dependencies:
   google_sign_in: ^6.2.2
   http: ^1.6.0
   url_launcher: ^6.3.2
+  file_picker: ^11.0.2
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +71,7 @@ flutter:
       - widgets/orange/kitten/
       - widgets/tabby/cat/
       - widgets/tabby/kitten/
+      - widgets/badges/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 
