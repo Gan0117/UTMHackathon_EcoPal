@@ -58,6 +58,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   bool _isLoading = true;
   String? _error;
   double _safeToSpend = 0.0;
+  String? _petSpecies;
   bool _isMapInitialized = false;
 
   final TransformationController _transformationController = TransformationController();
@@ -176,6 +177,15 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     return Size(smallSize, smallSize); // 1x
   }
 
+  
+  String get _catHappyGif {
+    if (_petSpecies == 'Orange') {
+      return 'widgets/orange/kitten/orkt_happy.gif'; // 确保你的文件夹里有这个文件！
+    }
+    // 默认是 Tabby
+    return 'widgets/tabby/kitten/kit_happy.gif'; // 确保你的文件夹里有这个文件！
+  }
+
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
@@ -185,10 +195,16 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
       final results = await Future.wait([
         ApiService.getPockets(),
         ApiService.getSafeToSpendBalance(),
+        ApiService.getPetStatus(), // 🌟 1. 加这行去拿猫咪数据
       ]);
       setState(() {
         _pockets = (results[0] as List<dynamic>).map((e) => MoneyPocket.fromJson(e)).toList();
         _safeToSpend = results[1] as double;
+        
+        // 🌟 2. 把猫咪的种类存起来 (Tabby 还是 Orange)
+        final petData = results[2] as Map<String, dynamic>;
+        _petSpecies = petData['species']; 
+        
         _isLoading = false;
       });
     } catch (e) {
@@ -900,11 +916,34 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   child: Stack(
                     children: [
                       Image.asset('widgets/dashboard/sunny.gif', width: 1920, height: 1080, fit: BoxFit.cover),
-                      if (!_isLoading && _error == null)
+                      Positioned(
+                        left: 1020, // 黑色空圈的 X 坐标
+                        top: 860,   // 黑色空圈的 Y 坐标
+                        child: SizedBox(
+                          width: 120, // 鱼桶大小，可以自己调
+                          height: 120,
+                          child: Image.asset('widgets/dashboard/bucket_fish.png', fit: BoxFit.contain),
+                        ),
+                      ),
+
+                      // 🌟 新增：猫咪 (放在最右边)
+                      if (_petSpecies != null) // 确保拿到数据了才显示
+                        Positioned(
+                          left: 1100, // 写着“猫”的圆圈的 X 坐标
+                          top: 850,   // 写着“猫”的圆圈的 Y 坐标
+                          child: SizedBox(
+                            width: 140, // 猫咪大小
+                            height: 140,
+                            child: Image.asset(_catHappyGif, fit: BoxFit.contain),
+                          ),
+                        ),
+                        if (!_isLoading && _error == null)
+
                         for (int i = 0; i < _pockets.length; i++)
                           _buildTreeItem(i, isDeleteTopLayer: false),
+
                       if (!_isLoading && _error == null)
-                        _buildWeatherLayer(weather),
+                        _buildWeatherLayer(weather)
                     ],
                   ),
                 ),
