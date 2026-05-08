@@ -164,4 +164,45 @@ class ApiService {
     );
     if (response.statusCode != 200) throw Exception('Backend error');
   }
+
+  static Future<void> createPocket(Map<String, dynamic> data) async {
+  if (isMockData) {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return;
+  }
+  final token = _getAuthToken();
+  final response = await http.post(
+    Uri.parse('$baseUrl/pockets'),
+    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+    body: jsonEncode(data),
+  );
+  if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Backend error');
+}
+
+static Future<void> updatePocket(String id, Map<String, dynamic> data) async {
+  if (isMockData) {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return;
+  }
+  final token = _getAuthToken();
+  final response = await http.put(
+    Uri.parse('$baseUrl/pockets/$id'),
+    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+    body: jsonEncode(data),
+  );
+  if (response.statusCode != 200) throw Exception('Backend error');
+}
+
+static Future<void> deletePocket(String id) async {
+  if (isMockData) {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return;
+  }
+  final token = _getAuthToken();
+  final response = await http.delete(
+    Uri.parse('$baseUrl/pockets/$id'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  if (response.statusCode != 200 && response.statusCode != 204) throw Exception('Backend error');
+}
 }
