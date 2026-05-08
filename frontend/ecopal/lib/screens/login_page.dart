@@ -180,7 +180,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         height: double.infinity,
         decoration: const BoxDecoration(
           image: DecorationImage(
-            image: AssetImage('widgets/login_page.gif'),
+            image: AssetImage('widgets/login_background.gif'),
             fit: BoxFit.cover, 
           ),
         ),
