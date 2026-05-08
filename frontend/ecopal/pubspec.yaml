@@ -39,6 +39,7 @@ dependencies:
   http: ^1.6.0
   url_launcher: ^6.3.2
   file_picker: ^11.0.2
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -67,8 +68,10 @@ flutter:
       - widgets/
       - widgets/ecopal_icon.png
       - assets/backend/data/
+      - widgets/orange/
       - widgets/orange/cat/
       - widgets/orange/kitten/
+      - widgets/tabby/
       - widgets/tabby/cat/
       - widgets/tabby/kitten/
       - widgets/badges/
