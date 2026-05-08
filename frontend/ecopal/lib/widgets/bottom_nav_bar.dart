@@ -4,6 +4,7 @@ import '../screens/pet_room_page.dart';
 import '../screens/profile_page.dart';
 import '../screens/scanner_page.dart';
 import '../screens/garden_page.dart';
+import '../screens/ai_insight_page.dart';
 
 class EcoPalBottomBar extends StatelessWidget {
   final int currentIndex;
@@ -23,6 +24,9 @@ class EcoPalBottomBar extends StatelessWidget {
         break;
       case 2: // Index 2 is the Pet Room
         page = const PetRoomPage();
+        break;
+      case 3:
+        page = const AiInsightPage();
         break;
       case 4: // Index 4 is the Profile Page
         page = const ProfilePage();

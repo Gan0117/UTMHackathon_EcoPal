@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/login_page.dart';
-import 'screens/pet_room_page.dart';
+import 'screens/garden_page.dart';
 import 'widgets/floating_pet.dart'; // 🔥 Import FloatingPet
 
 Future<void> main() async {
@@ -73,7 +73,7 @@ class _AuthGateState extends State<AuthGate> {
       if (!mounted) return;
 
       if (event == AuthChangeEvent.signedIn) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PetRoomPage()));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const GardenPage()));
       } else if (event == AuthChangeEvent.signedOut) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage()));
       }
@@ -84,7 +84,7 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
     if (session != null) {
-      return const PetRoomPage();
+      return const GardenPage();
     }
     return const LoginPage();
   }
