@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../services/api_service.dart';
 import 'login_page.dart';
 import 'pet_selection_page.dart';
@@ -30,6 +34,9 @@ class _ProfilePageState extends State<ProfilePage> {
   final Color outlineVariant = const Color(0xFFBFC9C1);
   final Color secondaryContainer = const Color(0xFF92F7C3);
 
+  // GlobalKey used to identify the widget we want to screenshot
+  final GlobalKey _shareCardKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -52,7 +59,6 @@ class _ProfilePageState extends State<ProfilePage> {
           _petSpecies = petData['species'] ?? 'Tabby';
           _petLevel = petData['level'] ?? 1;
           
-          // Data is strictly pulled from the API
           _streak = profileData['streak'] ?? 0;
 
           double calculatedHarvest = (profileData['safe_to_spend_balance'] ?? 0.0).toDouble();
@@ -87,7 +93,142 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- 🔥 Goal 1 & 2: Edit Username Logic using API Service ---
+  // --- Image Capture & Share Logic ---
+  Future<void> _captureAndShare() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generating image...')),
+      );
+
+      // 1. Find the Render object
+      RenderRepaintBoundary boundary = _shareCardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      
+      // 2. Convert to Image (pixelRatio > 1 for high res)
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final buffer = byteData!.buffer.asUint8List();
+
+      // 3. Create XFile directly from memory
+      final xFile = XFile.fromData(
+        buffer,
+        mimeType: 'image/png',
+        name: 'ecopal_progress.png',
+      );
+
+      // 4. Trigger native Share sheet
+      await Share.shareXFiles(
+        [xFile],
+        text: 'Check out my financial garden on EcoPal! 🌿 I am on a $_streak day streak with $_petName!',
+      );
+
+    } catch (e) {
+      debugPrint('Error sharing image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to generate image for sharing.')),
+        );
+      }
+    }
+  }
+
+  void _showSharePreviewDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // --- THE WIDGET THAT WILL BE CAPTURED ---
+              RepaintBoundary(
+                key: _shareCardKey, 
+                child: Container(
+                  width: 300,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: surfaceSoil,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: primaryColor, width: 4),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('EcoPal', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: primaryColor)),
+                      const SizedBox(height: 16),
+                      
+                      // Pet Avatar on the share card
+                      Container(
+                        width: 100, height: 100, 
+                        decoration: BoxDecoration(color: surfaceContainer, shape: BoxShape.circle, border: Border.all(color: primaryColor, width: 2)), 
+                        child: Image.asset(_currentGifPath, filterQuality: FilterQuality.none, fit: BoxFit.contain)
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // 🔥 Goal 1: Added Pet Name explicitly to the Share Card
+                      Text(_petName, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryColor)),
+                      const SizedBox(height: 8),
+
+                      _buildBadge('Level $_petLevel $_petSpecies', primaryColor),
+                      const SizedBox(height: 16),
+                      
+                      Text('Owner: $_userName', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+                      const SizedBox(height: 12),
+                      
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            _getBadgeAsset(_streak),
+                            width: 32,
+                            height: 32,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(width: 8),
+                          Text('$_streak Day Savings Streak!', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: secondaryContainer,
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                        child: Text('Total Harvest: \$${_totalHarvest.toStringAsFixed(0)}', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // --- END OF CAPTURED WIDGET ---
+              
+              const SizedBox(height: 24),
+              
+              // Action Button (This won't appear in the screenshot)
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: primaryColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))
+                ),
+                icon: const Icon(Icons.send),
+                label: const Text('Share to Socials', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  _captureAndShare();     // Trigger screenshot & share
+                },
+              )
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  // --- Edit Username Logic ---
   void _showEditNameDialog() {
     final TextEditingController nameController = TextEditingController(text: _userName);
     bool isSaving = false;
@@ -136,12 +277,11 @@ class _ProfilePageState extends State<ProfilePage> {
                     setDialogState(() => isSaving = true);
 
                     try {
-                      // 🔥 Updates Backend via ApiService
                       await ApiService.updateProfile({'username': newName});
                       
                       if (mounted) {
                         setState(() {
-                          _userName = newName; // Updates UI state locally
+                          _userName = newName; 
                         });
                         Navigator.pop(context); 
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Username updated successfully!')));
@@ -166,7 +306,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _launchSupport() async {
-    final Uri url = Uri.parse('https://google.com');
+    final Uri url = Uri.parse('https://maps.app.goo.gl/nxLVEbwaJXjzT8HDA');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open Support URL')));
     }
@@ -217,13 +357,12 @@ class _ProfilePageState extends State<ProfilePage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // 🔥 Updated: Username row with Edit button
                                     Row(
                                       children: [
                                         Text(_userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                                         const SizedBox(width: 8),
                                         GestureDetector(
-                                          onTap: _showEditNameDialog, // Trigger Edit Dialog
+                                          onTap: _showEditNameDialog,
                                           child: Icon(Icons.edit, size: 16, color: Colors.grey.shade600),
                                         ),
                                       ],
@@ -282,6 +421,19 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         ),
                         const SizedBox(height: 32),
+
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: primaryColor, 
+                            foregroundColor: Colors.white, 
+                            minimumSize: const Size(double.infinity, 56), 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))
+                          ),
+                          icon: const Icon(Icons.ios_share), 
+                          label: const Text('Share Progress', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), 
+                          onPressed: _showSharePreviewDialog,
+                        ),
+                        const SizedBox(height: 12),
 
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.9), foregroundColor: Colors.grey.shade800, side: BorderSide(color: Colors.grey.shade300), minimumSize: const Size(double.infinity, 56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))),
