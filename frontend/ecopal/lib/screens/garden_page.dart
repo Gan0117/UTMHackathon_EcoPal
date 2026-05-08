@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'dart:math' as math; // 🌟 新增：引入 math 库来计算完美的缩放比例
+import 'dart:math' as math;
 import '../widgets/bottom_nav_bar.dart';
 import '../services/api_service.dart';
 
@@ -58,13 +58,14 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   bool _isLoading = true;
   String? _error;
   double _safeToSpend = 0.0;
-  bool _isMapInitialized = false; // 🌟 确保只在进入时初始化一次视角
+  bool _isMapInitialized = false;
 
   final TransformationController _transformationController = TransformationController();
   late AnimationController _animationController;
   Animation<Matrix4>? _animation;
 
-  // 树木Z字形排列：绝对中心点是 (960, 540)
+  // 树木Z字形排列：边界是 X(820~1100), Y(260~820)
+  // 这个群体的绝对中心点是 (960, 540)
   static const List<Offset> _staggeredWorldPositions = [
     Offset(820, 260),   // 1 - 左上
     Offset(1100, 400),  // 2 - 右中上
@@ -93,7 +94,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 🌟 核心：在画面一开始渲染时，就完美锁定中心和比例，解决黑边闪烁问题
     if (!_isMapInitialized) {
       _recenterMap(animated: false);
       _isMapInitialized = true;
@@ -107,20 +107,24 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  // 🌟 完美 Recenter 计算逻辑
+  // 🌟 替换这一整段 _recenterMap 函数
   void _recenterMap({bool animated = true}) {
     if (!mounted) return;
 
     final screenSize = MediaQuery.of(context).size;
     
-    // 🌟 计算"最 minimize"的比例：
-    // 取屏幕宽度/1920 和 屏幕高度/1080 的最大值。
-    // 这保证了画面会尽可能地缩小看全树木，但绝对不会露出黑边！
-    final targetScale = math.max(screenSize.width / 1920.0, screenSize.height / 1080.0);
+    // 聚焦树群的正中心位置 (根据 Z字型 算出来的绝对中心)
+    const targetX = 960.0;
+    const targetY = 540.0;
+    
+    // 🌟 核心修改：计算"最 minimize"的比例！
+    // 取屏幕宽度的比例和高度的比例的最大值，保证尽可能缩小看全植物，但绝对不漏黑边。
+    final minScaleToFit = math.max(screenSize.width / 1920.0, screenSize.height / 1080.0);
+    
+    // 强制每次 Recenter 都回到最缩小的全景状态
+    final targetScale = minScaleToFit;
 
-    const targetX = 960.0; // 树群 X 轴中心
-    const targetY = 540.0; // 树群 Y 轴中心
-
+    // 计算平移量，让目标点居中
     final dx = (screenSize.width / 2) - (targetX * targetScale);
     final dy = (screenSize.height / 2) - (targetY * targetScale);
 
@@ -158,13 +162,13 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     return 'widgets/dashboard/${name}_tree_small.png';
   }
 
-  // 🌟 树木尺寸逻辑：Big 是 1.6 倍，Medium 是 1.4 倍
+  // 🌟 Big 植物变成 Small 的 1.7 倍
   Size _getTreeSize(double currentBalance, double targetAmount) {
     final progress = targetAmount > 0 ? currentBalance / targetAmount : 0.0;
     final smallSize = 240.0;
     
     if (progress >= 1.0) {
-      return Size(smallSize * 1.6, smallSize * 1.6); // 1.6x 
+      return Size(smallSize * 1.7, smallSize * 1.7); // 1.7x
     } else if (progress >= 0.7) {
       return Size(smallSize * 1.4, smallSize * 1.4); // 1.4x
     }
@@ -211,9 +215,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
       setState(() => _deleteMode = false);
       return;
     }
-    
     _recenterMap(animated: true);
-
     if (_pockets.length >= 5) {
       _showMaxPocketsMessage();
     } else {
@@ -739,10 +741,105 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
+  // 🌟 核心：统一生成树木的组件，供两个图层复用
+  Widget _buildTreeItem(int i, {required bool isDeleteTopLayer}) {
+    // 如果是底层（正常模式），且开启了删除模式，则不在底层渲染，交由顶层渲染
+    if (!isDeleteTopLayer && _deleteMode) return const SizedBox.shrink();
+
+    final pocket = _pockets[i];
+    final treeSize = _getTreeSize(pocket.currentBalance, pocket.targetAmount);
+    final centerPos = _staggeredWorldPositions[i];
+    
+    // 判断该植物在左边还是右边 (960 是中线)
+    final bool isLeftPlant = centerPos.dx < 960.0;
+
+    return Positioned(
+      left: centerPos.dx - treeSize.width / 2,
+      top: centerPos.dy - treeSize.height / 2,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hoveredPlantIndex = i),
+        onExit: (_) => setState(() => _hoveredPlantIndex = null),
+        child: GestureDetector(
+          onTap: () {
+            if (_deleteMode) {
+              _showDeleteConfirm(i);
+            } else {
+              _showPocketDetails(_pockets[i], i);
+            }
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              SizedBox(
+                width: treeSize.width,
+                height: treeSize.height,
+                child: Image.asset(
+                  _treeImage(i, pocket.currentBalance, pocket.targetAmount),
+                  fit: BoxFit.contain,
+                ),
+              ),
+              
+              // 删除模式下显示的红叉
+              if (_deleteMode)
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Container(
+                    width: 32, // 稍微加大点击区域
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent, 
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))
+                      ]
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 18),
+                  ),
+                ),
+                
+              // 🌟 智能气泡提示：左边的在左边，右边的在右边
+              if (_hoveredPlantIndex == i && !_deleteMode)
+                Positioned(
+                  top: treeSize.height * 0.1, // 高度位于树木稍上方
+                  left: isLeftPlant ? null : treeSize.width * 0.65, // 右边植物，气泡靠右
+                  right: isLeftPlant ? treeSize.width * 0.65 : null, // 左边植物，气泡靠左
+                  child: Container(
+                    width: 170, // 设定固定宽度，避免文字太长撑破
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9), // 背景稍微实一点，防止透树木
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(pocket.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                        const SizedBox(height: 4),
+                        Text(_formatAmount(pocket.currentBalance),
+                            style: const TextStyle(fontSize: 18, color: Color(0xFF4CAF50), fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final weather = _currentWeather;
-    // 🌟 计算最小的安全缩放比例 (禁止缩放到露出黑边)
     final screenSize = MediaQuery.of(context).size;
     final minScaleToFit = math.max(screenSize.width / 1920.0, screenSize.height / 1080.0);
 
@@ -754,9 +851,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: const BoxDecoration(
-              color: Colors.transparent,
-            ),
+            decoration: const BoxDecoration(color: Colors.transparent),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -787,13 +882,16 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
       ),
       body: Stack(
         children: [
+          // ---------------------------------------------------------
+          // LAYER 1: 基础游戏世界 (正常模式下的背景、树、天气)
+          // ---------------------------------------------------------
           GestureDetector(
             onTap: _onBackgroundTap,
             child: Positioned.fill(
               child: InteractiveViewer(
                 transformationController: _transformationController,
                 boundaryMargin: EdgeInsets.zero,
-                minScale: minScaleToFit, // 🌟 锁定最小缩放比例，不准露出黑边！
+                minScale: minScaleToFit,
                 maxScale: 2.5,
                 constrained: false,
                 child: SizedBox(
@@ -801,94 +899,12 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   height: 1080,
                   child: Stack(
                     children: [
-                      // Layer 1
-                      Image.asset('widgets/dashboard/sunny.gif',
-                          width: 1920, height: 1080, fit: BoxFit.cover),
-
-                      // Layer 2
+                      Image.asset('widgets/dashboard/sunny.gif', width: 1920, height: 1080, fit: BoxFit.cover),
                       if (!_isLoading && _error == null)
-                        for (int i = 0; i < _pockets.length && i < _staggeredWorldPositions.length; i++)
-                          () {
-                            final pocket = _pockets[i];
-                            final treeSize = _getTreeSize(pocket.currentBalance, pocket.targetAmount);
-                            final centerPos = _staggeredWorldPositions[i];
-                            
-                            return Positioned(
-                              left: centerPos.dx - treeSize.width / 2,
-                              top: centerPos.dy - treeSize.height / 2,
-                              child: MouseRegion(
-                                onEnter: (_) => setState(() => _hoveredPlantIndex = i),
-                                onExit: (_) => setState(() => _hoveredPlantIndex = null),
-                                child: GestureDetector(
-                                  onTap: () {
-                                    if (_deleteMode) {
-                                      _showDeleteConfirm(i);
-                                    } else {
-                                      _showPocketDetails(_pockets[i], i);
-                                    }
-                                  },
-                                  child: Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      SizedBox(
-                                        width: treeSize.width,
-                                        height: treeSize.height,
-                                        child: Image.asset(
-                                          _treeImage(i, pocket.currentBalance, pocket.targetAmount),
-                                          fit: BoxFit.contain,
-                                        ),
-                                      ),
-                                      if (_deleteMode)
-                                        Positioned(
-                                          top: 0,
-                                          right: 0,
-                                          child: Container(
-                                            width: 24,
-                                            height: 24,
-                                            decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                                            child: const Icon(Icons.close, color: Colors.white, size: 16),
-                                          ),
-                                        ),
-                                      if (_hoveredPlantIndex == i && !_deleteMode)
-                                        Positioned(
-                                          top: -110,
-                                          left: treeSize.width / 2 - 100,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(0.55),
-                                              borderRadius: BorderRadius.circular(12),
-                                              boxShadow: [
-                                                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2)),
-                                              ],
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(pocket.name,
-                                                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                                const SizedBox(height: 4),
-                                                Text(_formatAmount(pocket.currentBalance),
-                                                    style: const TextStyle(fontSize: 18, color: Color(0xFF4CAF50), fontWeight: FontWeight.w600)),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }(),
-
-                      // Layer 3
+                        for (int i = 0; i < _pockets.length; i++)
+                          _buildTreeItem(i, isDeleteTopLayer: false),
                       if (!_isLoading && _error == null)
                         _buildWeatherLayer(weather),
-
-                      // Dim overlay
-                      if (_deleteMode)
-                        Container(width: 1920, height: 1080, color: Colors.black.withOpacity(0.15)),
                     ],
                   ),
                 ),
@@ -896,7 +912,9 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
             ),
           ),
 
-          // Layer 4 Native UI
+          // ---------------------------------------------------------
+          // LAYER 2: 原生 UI 层 (Safe to spend, Recenter 按钮等)
+          // ---------------------------------------------------------
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
 
@@ -941,31 +959,18 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                         children: [
                           const Text(
                             'SAFE TO SPEND',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.black54,
-                              letterSpacing: 1.8,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: TextStyle(fontSize: 11, color: Colors.black54, letterSpacing: 1.8, fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '\$${_safeToSpend.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 34,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
+                            style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.black87),
                           ),
                           const SizedBox(height: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(
-                              color: weather == 'storm'
-                                  ? Colors.red.withOpacity(0.12)
-                                  : weather == 'overcast'
-                                      ? Colors.orange.withOpacity(0.12)
-                                      : Colors.green.withOpacity(0.12),
+                              color: weather == 'storm' ? Colors.red.withOpacity(0.12) : weather == 'overcast' ? Colors.orange.withOpacity(0.12) : Colors.green.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
@@ -977,19 +982,11 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  weather == 'storm'
-                                      ? 'Storm'
-                                      : weather == 'overcast'
-                                          ? 'Overcast'
-                                          : 'Sunny',
+                                  weather == 'storm' ? 'Over Budget' : weather == 'overcast' ? 'Budget Tight' : 'Budget Sunny',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
-                                    color: weather == 'storm'
-                                        ? Colors.red
-                                        : weather == 'overcast'
-                                            ? Colors.orange
-                                            : const Color(0xFF2E7D32),
+                                    color: weather == 'storm' ? Colors.red : weather == 'overcast' ? Colors.orange : const Color(0xFF2E7D32),
                                   ),
                                 ),
                               ],
@@ -1039,6 +1036,43 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                       ? 'Tap a plant to delete'
                       : _activeDescription!,
                 ),
+              ),
+            ),
+
+          // ---------------------------------------------------------
+          // 🌟 LAYER 3: 绝对置顶的删除模式覆盖层 (Z-Index 最高)
+          // ---------------------------------------------------------
+          if (_deleteMode)
+            Positioned.fill(
+              child: Stack(
+                children: [
+                  // 1. 半透明遮罩层，直接挡在所有原生 UI（包括 Safe to spend 卡片）上面
+                  GestureDetector(
+                    onTap: () => setState(() => _deleteMode = false),
+                    child: Container(color: Colors.black.withOpacity(0.25)), // 颜色稍加深以区分层级
+                  ),
+                  
+                  // 2. 映射背景缩放比例的树木实体层，保证红叉按钮不仅置顶，位置还和地图丝毫不差
+                  ValueListenableBuilder<Matrix4>(
+                    valueListenable: _transformationController,
+                    builder: (context, matrix, child) {
+                      return Transform(
+                        transform: matrix,
+                        child: SizedBox(
+                          width: 1920,
+                          height: 1080,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              for (int i = 0; i < _pockets.length; i++)
+                                _buildTreeItem(i, isDeleteTopLayer: true),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
         ],
