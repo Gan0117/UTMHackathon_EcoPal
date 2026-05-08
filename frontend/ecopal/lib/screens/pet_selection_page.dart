@@ -111,9 +111,9 @@ class _PetSelectionPageState extends State<PetSelectionPage> {
 
                     Row(
                       children: [
-                        Expanded(child: _buildPetCard(species: 'Tabby', defaultName: 'Ash', description: 'Observant & Calm', icon: Icons.psychology, gifPath: 'widgets/tabby/kitten/kit_idle.gif')),
+                        Expanded(child: _buildPetCard(species: 'Tabby', defaultName: 'Tabby', description: 'Observant & Calm', icon: Icons.psychology, gifPath: 'widgets/tabby/kitten/kit_idle.gif')),
                         const SizedBox(width: 16),
-                        Expanded(child: _buildPetCard(species: 'Orange', defaultName: 'Ginger', description: 'Playful & Energetic', icon: Icons.bolt, gifPath: 'widgets/orange/kitten/orkt_idle.gif')),
+                        Expanded(child: _buildPetCard(species: 'Orange', defaultName: 'Orange', description: 'Playful & Energetic', icon: Icons.bolt, gifPath: 'widgets/orange/kitten/orkt_idle.gif')),
                       ],
                     ),
                     const SizedBox(height: 24),
