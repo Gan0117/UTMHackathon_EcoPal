@@ -206,32 +206,89 @@ static Future<void> deletePocket(String id) async {
   if (response.statusCode != 200 && response.statusCode != 204) throw Exception('Backend error');
 }
 
-// ===========================================================================
-// 8. SAFE TO SPEND BALANCE
-// ===========================================================================
-static Future<double> getSafeToSpendBalance() async {
-  if (isMockData) {
-    final String jsonString = await rootBundle.loadString('assets/backend/data/profiles.json');
-    final data = jsonDecode(jsonString);
-    return (data['safe_to_spend_balance'] as num).toDouble();
+  // ===========================================================================
+  // 8. SAFE TO SPEND BALANCE
+  // ===========================================================================
+  static Future<double> getSafeToSpendBalance() async {
+    if (isMockData) {
+      final String jsonString = await rootBundle.loadString('assets/backend/data/profiles.json');
+      final data = jsonDecode(jsonString);
+      return (data['safe_to_spend_balance'] as num).toDouble();
+    }
+
+    final token = _getAuthToken();
+    if (token == null) throw Exception('User is not logged in.');
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/profile'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['safe_to_spend_balance'] as num).toDouble();
+    } else {
+      throw Exception('Backend error: ${response.statusCode}');
+    }
   }
 
-  final token = _getAuthToken();
-  if (token == null) throw Exception('User is not logged in.');
+// ===========================================================================
+  // 9. HABIT TAX (AI INSIGHTS)
+  // ===========================================================================
+  static Future<Map<String, dynamic>> getHabitTax() async {
+    if (isMockData) {
+      // Return mock data matching the required schema
+      final String jsonString = await rootBundle.loadString('assets/backend/data/habit_tax.json');
+      final data = jsonDecode(jsonString);
+      return data;
+    }
 
-  final response = await http.get(
-    Uri.parse('$baseUrl/profile'),
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    },
-  );
+    final token = _getAuthToken();
+    if (token == null) throw Exception('User is not logged in.');
 
-  if (response.statusCode == 200) {
-    final data = jsonDecode(response.body);
-    return (data['safe_to_spend_balance'] as num).toDouble();
-  } else {
-    throw Exception('Backend error: ${response.statusCode}');
+    final response = await http.get(
+      Uri.parse('$baseUrl/habit-tax'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Backend error: ${response.statusCode}');
+    }
   }
-}
+
+  static Future<void> updateHabitTax(bool isAvailable) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return; 
+    }
+    
+    final token = _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/habit-tax/update'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({"available": isAvailable}),
+    );
+    if (response.statusCode != 200) throw Exception('Backend error');
+  }
+
+  // ===========================================================================
+  // 10. BEHAVIOR ANALYSIS (Specific Insight for the Chart)
+  // ===========================================================================
+  static Future<String> getBehaviorAnalysis() async {
+    if (isMockData) {
+      return "Your recent grocery run at Market Street was excellent! By choosing seasonal vegetables, you've saved 15% compared to last week.";
+    }
+
+    final token = _getAuthToken();
+    final response = await http.get(Uri.parse('$baseUrl/ai/behavior'), headers: {'Authorization': 'Bearer $token'});
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['message'];
+    }
+    throw Exception('Backend error');
+  }
 }
