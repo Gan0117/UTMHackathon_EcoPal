@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
+import 'dart:math' as math; // 🌟 新增：引入 math 库来计算完美的缩放比例
 import '../widgets/bottom_nav_bar.dart';
 import '../services/api_service.dart';
 
@@ -47,21 +49,105 @@ class GardenPage extends StatefulWidget {
   State<GardenPage> createState() => _GardenPageState();
 }
 
-class _GardenPageState extends State<GardenPage> {
+class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateMixin {
   String? _activeDescription;
+  bool _isHoveringRecenter = false; 
   int? _hoveredPlantIndex;
   List<MoneyPocket> _pockets = [];
   bool _deleteMode = false;
   bool _isLoading = true;
   String? _error;
+  double _safeToSpend = 0.0;
+  bool _isMapInitialized = false; // 🌟 确保只在进入时初始化一次视角
 
-  static const List<Offset> _plantPositions = [
-    Offset(0.22, 0.28),
-    Offset(0.38, 0.52),
-    Offset(0.20, 0.65),
-    Offset(0.75, 0.30),
-    Offset(0.78, 0.52),
+  final TransformationController _transformationController = TransformationController();
+  late AnimationController _animationController;
+  Animation<Matrix4>? _animation;
+
+  // 树木Z字形排列：绝对中心点是 (960, 540)
+  static const List<Offset> _staggeredWorldPositions = [
+    Offset(820, 260),   // 1 - 左上
+    Offset(1100, 400),  // 2 - 右中上
+    Offset(820, 540),   // 3 - 左中
+    Offset(1100, 680),  // 4 - 右中下
+    Offset(820, 820),   // 5 - 左下
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _animationController.addListener(() {
+      if (_animation != null) {
+        _transformationController.value = _animation!.value;
+      }
+    });
+
+    _loadData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 🌟 核心：在画面一开始渲染时，就完美锁定中心和比例，解决黑边闪烁问题
+    if (!_isMapInitialized) {
+      _recenterMap(animated: false);
+      _isMapInitialized = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  // 🌟 完美 Recenter 计算逻辑
+  void _recenterMap({bool animated = true}) {
+    if (!mounted) return;
+
+    final screenSize = MediaQuery.of(context).size;
+    
+    // 🌟 计算"最 minimize"的比例：
+    // 取屏幕宽度/1920 和 屏幕高度/1080 的最大值。
+    // 这保证了画面会尽可能地缩小看全树木，但绝对不会露出黑边！
+    final targetScale = math.max(screenSize.width / 1920.0, screenSize.height / 1080.0);
+
+    const targetX = 960.0; // 树群 X 轴中心
+    const targetY = 540.0; // 树群 Y 轴中心
+
+    final dx = (screenSize.width / 2) - (targetX * targetScale);
+    final dy = (screenSize.height / 2) - (targetY * targetScale);
+
+    final targetMatrix = Matrix4.identity()
+      ..translate(dx, dy)
+      ..scale(targetScale);
+
+    if (animated) {
+      _animation = Matrix4Tween(
+        begin: _transformationController.value,
+        end: targetMatrix,
+      ).animate(CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOutCubic,
+      ));
+      _animationController.forward(from: 0);
+    } else {
+      _transformationController.value = targetMatrix;
+    }
+  }
+
+  String _weatherState(double safeToSpend, double totalTarget) {
+    if (safeToSpend <= 0) return 'storm';
+    final ratio = totalTarget > 0 ? safeToSpend / totalTarget : 1.0;
+    if (ratio <= 0.10) return 'overcast';
+    return 'sunny';
+  }
 
   String _treeImage(int pocketIndex, double currentBalance, double targetAmount) {
     final progress = targetAmount > 0 ? currentBalance / targetAmount : 0.0;
@@ -72,36 +158,46 @@ class _GardenPageState extends State<GardenPage> {
     return 'widgets/dashboard/${name}_tree_small.png';
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadPockets();
+  // 🌟 树木尺寸逻辑：Big 是 1.6 倍，Medium 是 1.4 倍
+  Size _getTreeSize(double currentBalance, double targetAmount) {
+    final progress = targetAmount > 0 ? currentBalance / targetAmount : 0.0;
+    final smallSize = 240.0;
+    
+    if (progress >= 1.0) {
+      return Size(smallSize * 1.6, smallSize * 1.6); // 1.6x 
+    } else if (progress >= 0.7) {
+      return Size(smallSize * 1.4, smallSize * 1.4); // 1.4x
+    }
+    
+    return Size(smallSize, smallSize); // 1x
   }
 
-  Future<void> _loadPockets() async {
+  Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      final data = await ApiService.getPockets();
+      final results = await Future.wait([
+        ApiService.getPockets(),
+        ApiService.getSafeToSpendBalance(),
+      ]);
       setState(() {
-        _pockets = data.map((e) => MoneyPocket.fromJson(e)).toList();
+        _pockets = (results[0] as List<dynamic>).map((e) => MoneyPocket.fromJson(e)).toList();
+        _safeToSpend = results[1] as double;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _error = 'Failed to load pockets: $e';
+        _error = 'Failed to load data: $e';
         _isLoading = false;
       });
     }
   }
 
-  double get _totalBalance {
-    double totalCurrent = _pockets.fold(0, (sum, p) => sum + p.currentBalance);
-    double totalTarget = _pockets.fold(0, (sum, p) => sum + p.targetAmount);
-    return (totalCurrent - totalTarget).clamp(0, double.infinity);
-  }
+  double get _totalTarget => _pockets.fold(0, (sum, p) => sum + p.targetAmount);
+
+  String get _currentWeather => _weatherState(_safeToSpend, _totalTarget);
 
   String _formatAmount(double amount) {
     if (amount >= 1000) {
@@ -115,6 +211,9 @@ class _GardenPageState extends State<GardenPage> {
       setState(() => _deleteMode = false);
       return;
     }
+    
+    _recenterMap(animated: true);
+
     if (_pockets.length >= 5) {
       _showMaxPocketsMessage();
     } else {
@@ -123,6 +222,9 @@ class _GardenPageState extends State<GardenPage> {
   }
 
   void _onDeletePlantTap() {
+    if (!_deleteMode) {
+      _recenterMap(animated: true);
+    }
     setState(() => _deleteMode = !_deleteMode);
   }
 
@@ -402,15 +504,8 @@ class _GardenPageState extends State<GardenPage> {
   }
 
   Widget _buildFieldLabel(String label) {
-    return Text(
-      label,
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: Colors.black54,
-        letterSpacing: 0.5,
-      ),
-    );
+    return Text(label,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5));
   }
 
   Widget _buildTextField({
@@ -432,18 +527,10 @@ class _GardenPageState extends State<GardenPage> {
         filled: true,
         fillColor: const Color(0xFFE2E2E5),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFD0D0D3))),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
-        errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
-        focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD0D0D3))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
     );
@@ -466,22 +553,16 @@ class _GardenPageState extends State<GardenPage> {
                   Container(
                     width: 36,
                     height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFE0E0),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFFFFE0E0), borderRadius: BorderRadius.circular(10)),
                     child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                   ),
                   const SizedBox(width: 12),
-                  const Text('Delete Plant',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  const Text('Delete Plant', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                'Are you sure you want to delete "${_pockets[index].name}"?',
-                style: const TextStyle(fontSize: 14, color: Colors.black54),
-              ),
+              Text('Are you sure you want to delete "${_pockets[index].name}"?',
+                  style: const TextStyle(fontSize: 14, color: Colors.black54)),
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -518,8 +599,7 @@ class _GardenPageState extends State<GardenPage> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         elevation: 0,
                       ),
-                      child: const Text('Delete',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
@@ -552,21 +632,15 @@ class _GardenPageState extends State<GardenPage> {
                   SizedBox(
                     width: 40,
                     height: 40,
-                    child: Image.asset(
-                      _treeImage(index, pocket.currentBalance, pocket.targetAmount),
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.contain,
-                    ),
+                    child: Image.asset(_treeImage(index, pocket.currentBalance, pocket.targetAmount),
+                        width: 40, height: 40, fit: BoxFit.contain),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(pocket.name,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ),
-                  if (pocket.isLocked)
-                    const Icon(Icons.lock, color: Colors.grey, size: 18),
+                  if (pocket.isLocked) const Icon(Icons.lock, color: Colors.grey, size: 18),
                 ],
               ),
               const SizedBox(height: 16),
@@ -575,8 +649,7 @@ class _GardenPageState extends State<GardenPage> {
                 children: [
                   Text('Target', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
                   Text('\$${pocket.targetAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                          color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
+                      style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -585,8 +658,7 @@ class _GardenPageState extends State<GardenPage> {
                 children: [
                   Text('Current', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
                   Text('\$${pocket.currentBalance.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                          color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
+                      style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
                 ],
               ),
               const SizedBox(height: 14),
@@ -630,8 +702,7 @@ class _GardenPageState extends State<GardenPage> {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 0,
                         ),
-                        child: const Text('Edit',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: const Text('Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -644,211 +715,333 @@ class _GardenPageState extends State<GardenPage> {
     );
   }
 
+  Widget _buildWeatherLayer(String weather) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 1200),
+      child: IgnorePointer(
+        key: ValueKey(weather),
+        child: weather == 'sunny'
+            ? const SizedBox.shrink()
+            : Opacity(
+                opacity: weather == 'storm' ? 0.55 : 0.40,
+                child: SizedBox(
+                  width: 1920,
+                  height: 1080,
+                  child: Image.asset(
+                    weather == 'storm'
+                        ? 'widgets/dashboard/storm.gif'
+                        : 'widgets/dashboard/overcast.gif',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final weather = _currentWeather;
+    // 🌟 计算最小的安全缩放比例 (禁止缩放到露出黑边)
     final screenSize = MediaQuery.of(context).size;
+    final minScaleToFit = math.max(screenSize.width / 1920.0, screenSize.height / 1080.0);
 
     return Scaffold(
       extendBody: true,
       backgroundColor: Colors.black,
-      bottomNavigationBar: const EcoPalBottomBar(currentIndex: 0),
-      body: GestureDetector(
-        onTap: _onBackgroundTap,
-        child: Stack(
-          children: [
-            SizedBox.expand(
-              child: Image.asset('widgets/dashboard/grass_map.gif', fit: BoxFit.cover),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Colors.transparent,
             ),
-            if (_isLoading)
-              const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
-            if (_error != null)
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_error!, style: const TextStyle(color: Colors.white)),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: _loadPockets,
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50)),
-                      child: const Text('Retry'),
-                    ),
-                  ],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _ToolButton(
+                  imagePath: 'widgets/dashboard/fourth_tree_small.png',
+                  description: 'Add Plant',
+                  isActive: false,
+                  onHoverChange: (hovering) {
+                    setState(() => _activeDescription = hovering ? 'Add Plant' : null);
+                  },
+                  onTap: _onAddPlantTap,
+                ),
+                const SizedBox(width: 16),
+                _ToolButton(
+                  imagePath: 'widgets/dashboard/shovel.png',
+                  description: 'Delete Plant',
+                  isActive: _deleteMode,
+                  onHoverChange: (hovering) {
+                    setState(() => _activeDescription = hovering ? 'Delete Plant' : null);
+                  },
+                  onTap: _onDeletePlantTap,
+                ),
+              ],
+            ),
+          ),
+          const EcoPalBottomBar(currentIndex: 0),
+        ],
+      ),
+      body: Stack(
+        children: [
+          GestureDetector(
+            onTap: _onBackgroundTap,
+            child: Positioned.fill(
+              child: InteractiveViewer(
+                transformationController: _transformationController,
+                boundaryMargin: EdgeInsets.zero,
+                minScale: minScaleToFit, // 🌟 锁定最小缩放比例，不准露出黑边！
+                maxScale: 2.5,
+                constrained: false,
+                child: SizedBox(
+                  width: 1920,
+                  height: 1080,
+                  child: Stack(
+                    children: [
+                      // Layer 1
+                      Image.asset('widgets/dashboard/sunny.gif',
+                          width: 1920, height: 1080, fit: BoxFit.cover),
+
+                      // Layer 2
+                      if (!_isLoading && _error == null)
+                        for (int i = 0; i < _pockets.length && i < _staggeredWorldPositions.length; i++)
+                          () {
+                            final pocket = _pockets[i];
+                            final treeSize = _getTreeSize(pocket.currentBalance, pocket.targetAmount);
+                            final centerPos = _staggeredWorldPositions[i];
+                            
+                            return Positioned(
+                              left: centerPos.dx - treeSize.width / 2,
+                              top: centerPos.dy - treeSize.height / 2,
+                              child: MouseRegion(
+                                onEnter: (_) => setState(() => _hoveredPlantIndex = i),
+                                onExit: (_) => setState(() => _hoveredPlantIndex = null),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (_deleteMode) {
+                                      _showDeleteConfirm(i);
+                                    } else {
+                                      _showPocketDetails(_pockets[i], i);
+                                    }
+                                  },
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      SizedBox(
+                                        width: treeSize.width,
+                                        height: treeSize.height,
+                                        child: Image.asset(
+                                          _treeImage(i, pocket.currentBalance, pocket.targetAmount),
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                      if (_deleteMode)
+                                        Positioned(
+                                          top: 0,
+                                          right: 0,
+                                          child: Container(
+                                            width: 24,
+                                            height: 24,
+                                            decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                                            child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                          ),
+                                        ),
+                                      if (_hoveredPlantIndex == i && !_deleteMode)
+                                        Positioned(
+                                          top: -110,
+                                          left: treeSize.width / 2 - 100,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(0.55),
+                                              borderRadius: BorderRadius.circular(12),
+                                              boxShadow: [
+                                                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2)),
+                                              ],
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(pocket.name,
+                                                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                                const SizedBox(height: 4),
+                                                Text(_formatAmount(pocket.currentBalance),
+                                                    style: const TextStyle(fontSize: 18, color: Color(0xFF4CAF50), fontWeight: FontWeight.w600)),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }(),
+
+                      // Layer 3
+                      if (!_isLoading && _error == null)
+                        _buildWeatherLayer(weather),
+
+                      // Dim overlay
+                      if (_deleteMode)
+                        Container(width: 1920, height: 1080, color: Colors.black.withOpacity(0.15)),
+                    ],
+                  ),
                 ),
               ),
-            if (!_isLoading && _error == null) ...[
-              if (_deleteMode)
-                Container(color: Colors.black.withOpacity(0.15)),
-              for (int i = 0; i < _pockets.length && i < _plantPositions.length; i++)
-                Positioned(
-                  left: _plantPositions[i].dx * screenSize.width - 36,
-                  top: _plantPositions[i].dy * screenSize.height - 36,
-                  child: MouseRegion(
-                    onEnter: (_) => setState(() => _hoveredPlantIndex = i),
-                    onExit: (_) => setState(() => _hoveredPlantIndex = null),
-                    child: GestureDetector(
-                      onTap: () {
-                        if (_deleteMode) {
-                          _showDeleteConfirm(i);
-                        } else {
-                          _showPocketDetails(_pockets[i], i);
-                        }
-                      },
-                      child: Stack(
-                        clipBehavior: Clip.none,
+            ),
+          ),
+
+          // Layer 4 Native UI
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
+
+          if (_error != null)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, style: const TextStyle(color: Colors.white)),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _loadData,
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50)),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+
+          if (!_isLoading && _error == null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.75),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.4)),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(
-                            width: 72,
-                            height: 72,
-                            child: Image.asset(
-                              _treeImage(i, _pockets[i].currentBalance, _pockets[i].targetAmount),
-                              width: 72,
-                              height: 72,
-                              fit: BoxFit.contain,
+                          const Text(
+                            'SAFE TO SPEND',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                              letterSpacing: 1.8,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          if (_deleteMode)
-                            Positioned(
-                              top: 0,
-                              right: 0,
-                              child: Container(
-                                width: 20,
-                                height: 20,
-                                decoration: const BoxDecoration(
-                                    color: Colors.redAccent, shape: BoxShape.circle),
-                                child: const Icon(Icons.close, color: Colors.white, size: 14),
-                              ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '\$${_safeToSpend.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
                             ),
-                          if (_hoveredPlantIndex == i && !_deleteMode)
-                            Positioned(
-                              bottom: 76,
-                              left: -10,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.55),
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.08),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      _pockets[i].name,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _formatAmount(_pockets[i].currentBalance),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF4CAF50),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: weather == 'storm'
+                                  ? Colors.red.withOpacity(0.12)
+                                  : weather == 'overcast'
+                                      ? Colors.orange.withOpacity(0.12)
+                                      : Colors.green.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
                             ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  weather == 'storm' ? '⛈️' : weather == 'overcast' ? '⛅' : '☀️',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  weather == 'storm'
+                                      ? 'Storm'
+                                      : weather == 'overcast'
+                                          ? 'Overcast'
+                                          : 'Sunny',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: weather == 'storm'
+                                        ? Colors.red
+                                        : weather == 'overcast'
+                                            ? Colors.orange
+                                            : const Color(0xFF2E7D32),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
                 ),
-            ],
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 20,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4)),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'SAFE TO SPEND',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black,
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '\$${_totalBalance.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                            fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
+
+          if (!_isLoading && _error == null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 20,
-              left: 16,
+              right: 20,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Row(
-                    children: [
-                      _ToolButton(
-                        imagePath: 'widgets/dashboard/fourth_tree_small.png',
-                        description: 'Add Plant',
-                        isActive: false,
-                        onHoverChange: (hovering) {
-                          setState(() => _activeDescription = hovering ? 'Add Plant' : null);
-                        },
-                        onTap: _onAddPlantTap,
-                      ),
-                      const SizedBox(width: 10),
-                      _ToolButton(
-                        imagePath: 'widgets/dashboard/shovel.png',
-                        description: 'Delete Plant',
-                        isActive: _deleteMode,
-                        onHoverChange: (hovering) {
-                          setState(() => _activeDescription = hovering ? 'Delete Plant' : null);
-                        },
-                        onTap: _onDeletePlantTap,
-                      ),
-                    ],
-                  ),
-                  if (_activeDescription != null) ...[
-                    const SizedBox(height: 8),
-                    _DescriptionBubble(
-                      label: _deleteMode && _activeDescription == 'Delete Plant'
-                          ? 'Tap a plant to delete'
-                          : _activeDescription!,
+                  MouseRegion(
+                    onEnter: (_) => setState(() => _isHoveringRecenter = true),
+                    onExit: (_) => setState(() => _isHoveringRecenter = false),
+                    child: FloatingActionButton.small(
+                      onPressed: () => _recenterMap(animated: true),
+                      backgroundColor: Colors.white.withOpacity(0.8),
+                      elevation: 4,
+                      child: const Icon(Icons.my_location, color: Color(0xFF4CAF50)),
                     ),
-                  ],
+                  ),
+                  if (_isHoveringRecenter) ...[
+                    const SizedBox(height: 8),
+                    const _DescriptionBubble(label: 'Recenter Map'),
+                  ]
                 ],
               ),
             ),
-          ],
-        ),
+
+          if (_activeDescription != null)
+            Positioned(
+              bottom: 130,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _DescriptionBubble(
+                  label: _deleteMode && _activeDescription == 'Delete Plant'
+                      ? 'Tap a plant to delete'
+                      : _activeDescription!,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -899,18 +1092,11 @@ class _ToolButtonState extends State<_ToolButton> {
             shape: BoxShape.circle,
             color: active ? Colors.white.withOpacity(0.9) : Colors.white.withOpacity(0.55),
             border: Border.all(
-              color: widget.isActive
-                  ? Colors.redAccent
-                  : active
-                      ? const Color(0xFF4CAF50)
-                      : Colors.white.withOpacity(0.6),
+              color: widget.isActive ? Colors.redAccent : active ? const Color(0xFF4CAF50) : Colors.white.withOpacity(0.6),
               width: active ? 2.5 : 1.5,
             ),
             boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3)),
+              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3)),
             ],
           ),
           child: Center(
@@ -935,16 +1121,11 @@ class _DescriptionBubble extends StatelessWidget {
         color: Colors.white.withOpacity(0.55),
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 3)),
+          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 3)),
         ],
       ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87),
-      ),
+      child: Text(label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
     );
   }
 }
