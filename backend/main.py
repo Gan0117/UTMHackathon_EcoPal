@@ -6,7 +6,8 @@ from google import genai
 from google.genai import types
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel 
+from pydantic import BaseModel
+from typing import Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -27,13 +28,20 @@ app = FastAPI()
 # Create the security scheme
 security = HTTPBearer()
 
-# --- NEW: Tell Python what a transaction from Flutter looks like ---
+# --- Data Models ---
 class TransactionRequest(BaseModel):
     amount: float
     category: str
-    title: str
+    description: str
     type: str = "expense" 
-    is_fixed: bool = False # Respects your specific database schema!
+    is_fixed: bool = False
+    created_at: Optional[str] = None
+
+class PetInteractRequest(BaseModel):
+    action: str # Expects "tap" or "feed"
+
+class ProfileUpdateRequest(BaseModel):
+    username: str
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     # HTTPBearer automatically extracts just the token string
@@ -48,63 +56,31 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except Exception as e:
         raise HTTPException(status_code=401, detail="Token verification failed or expired")
 
+# --- AI REALITY CHECK ---
 @app.get("/ai/reality-check")
 async def reality_check(user = Depends(get_current_user)):
     user_id = user.user.id
-
-    # 1. Fetch user's transactions from the last 30 days
-    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    res = supabase.table("transactions").select("*").eq("user_id", user_id).gte("created_at", thirty_days_ago).execute()
-
-    transactions = res.data
-
-    # 2. Summarize the data to save tokens and give the AI clear context
-    if not transactions:
-        return {"ai_message": "Mochi says: You haven't logged any transactions yet! Start tracking your expenses so I can help you grow your ecosystem."}
-
-    total_spent = 0
-    category_totals = {}
-
-    for tx in transactions:
-        if tx["type"] == "expense":
-            amt = float(tx["amount"]) # Ensure it's a number
-            total_spent += amt
-            cat = tx["category"]
-            category_totals[cat] = category_totals.get(cat, 0) + amt
-
-    # 3. Construct the Prompt for Gemini
-    # This is where we inject the "Living Ledger" personality!
+    
+    # Get recent transactions for context
+    res = supabase.table("transactions").select("amount, category, description").eq("user_id", user_id).limit(10).execute()
+    recent_tx = res.data
+    
     prompt = f"""
-    You are the 'EcoPal Reality Check', the AI brain behind a gamified finance app.
-    The user has a digital pet (Mochi the Cat) and savings pockets that grow like a garden.
-
-    Here is the user's spending summary for the last 30 days:
-    - Total Spent: RM {total_spent:.2f}
-    - Breakdown by Category: {category_totals}
-
-    Write a short, engaging, 2-to-3 sentence financial reality check.
-    - Grade their spending as "Healthy", "Moderate", or "Unhealthy".
-    - If they spent a lot on "Entertainment" or "Guilty Pleasures", playfully warn them that their savings plants might wither or Mochi is judging them.
-    - If they are doing well, encourage them.
-    - Keep it fun, slightly sassy, but genuinely helpful. Do not use markdown formatting, just plain text.
+    You are EcoPal, a sassy but helpful financial pet. Look at these recent transactions: {recent_tx}.
+    Give a 1-2 sentence reality check. 
+    CRITICAL RULE: 
+    - If spending is bad/guilty, you MUST include the exact word "unhealthy" in your response.
+    - If spending is okay but high, you MUST include the exact word "moderate" in your response.
+    - If spending is good, do not use those words.
     """
-
-    # 4. Call the Gemini API
-    try:
-        response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash', # Google's fastest model
-            contents=prompt,
-        )
-        ai_message = response.text
-    except Exception as e:
-        ai_message = f"Mochi is currently napping and couldn't fetch your reality check. (Error: {str(e)})"
-
-    # Return the AI's advice along with the raw data for the Flutter UI to use
-    return {
-        "ai_message": ai_message,
-        "total_spent": total_spent,
-        "breakdown": category_totals
-    }
+    
+    response = gemini_client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt
+    )
+    
+    # Frontend expects exactly {"message": "..."}
+    return {"message": response.text.strip()}
 
 @app.post("/pet/feed")
 async def feed_pet(user = Depends(get_current_user)):
@@ -180,69 +156,46 @@ async def touch_pet(user = Depends(get_current_user)):
     
     return {"message": "Pet loved the pets!", "pet_stats": update_res.data[0]}
 
-# --- NEW: THE CORE ENGINE (Transactions, Habit Tax, and Weather) ---
+# --- TRANSACTIONS ---
+@app.get("/transactions")
+async def get_transactions(user = Depends(get_current_user)):
+    user_id = user.user.id
+    # Fetch and order by newest first
+    res = supabase.table("transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return res.data
+
+# --- THE CORE ENGINE (Transactions, Habit Tax, and Weather) ---
 @app.post("/transactions")
 async def log_transaction(req: TransactionRequest, user = Depends(get_current_user)):
     user_id = user.user.id
     
-    # 1. Save the main transaction
+    # 1. Save main transaction (using 'description' now!)
     tx_data = {
         "user_id": user_id,
         "amount": req.amount,
         "category": req.category,
-        "title": req.title,
+        "description": req.description, 
         "type": req.type,
-        "is_fixed": req.is_fixed # Saves to your custom schema
+        "is_fixed": req.is_fixed 
     }
+    if req.created_at:
+        tx_data["created_at"] = req.created_at
+        
     supabase.table("transactions").insert(tx_data).execute()
 
-    tax_applied = 0.0
-    
-    # 2. THE HABIT TAX ENGINE
-    # If it's a guilty pleasure, calculate a 5% tax and move it to savings!
-    guilty_categories = ["Entertainment", "Shopping", "Guilty Pleasure", "Boba"]
+    # 2. Habit Tabung (Flat RM 1.00)
+    guilty_categories = ["Entertainment", "Shopping", "Guilty Pleasure"]
     
     if req.category in guilty_categories and req.type == "expense":
-        tax_applied = 1.00
+        # First, check how much is currently in the piggy bank
+        tax_res = supabase.table("habit_tax").select("amount").eq("user_id", user_id).execute()
         
-        # Create a second, background transaction for the tax
-        tax_data = {
-            "user_id": user_id,
-            "amount": tax_applied,
-            "category": "Habit Tax",
-            "title": f"Habit Tax from {req.title}",
-            "type": "tax_transfer",
-            "is_fixed": False
-        }
-        supabase.table("transactions").insert(tax_data).execute()
+        if tax_res.data:
+            current_amount = tax_res.data[0]["amount"]
+            # Add RM 1.00
+            supabase.table("habit_tax").update({"amount": current_amount + 1.00}).eq("user_id", user_id).execute()
 
-    # 3. THE WEATHER CALCULATOR
-    # Get all expenses for the current month
-    now = datetime.now(timezone.utc)
-    start_of_month = now.replace(day=1, hour=0, minute=0, second=0).isoformat()
-    
-    res = supabase.table("transactions").select("amount").eq("user_id", user_id).eq("type", "expense").gte("created_at", start_of_month).execute()
-    
-    # Sum up everything they spent this month
-    total_spent = sum([item["amount"] for item in res.data])
-    
-    # Hackathon placeholder budget
-    monthly_budget = 2000.00
-    
-    if total_spent >= monthly_budget * 0.9:
-        weather = "Storming"  # Over 90% budget! Plants wither!
-    elif total_spent >= monthly_budget * 0.7:
-        weather = "Overcast"  # Over 70% budget. Warning!
-    else:
-        weather = "Sunny"     # Safe to spend. Plants thrive!
-
-    # Return everything to Flutter so the UI can update instantly
-    return {
-        "message": "Transaction logged successfully",
-        "habit_tax_deducted": tax_applied,
-        "current_weather": weather,
-        "monthly_spent": total_spent
-    }
+    return {"message": "Transaction logged successfully!"}
 
 @app.post("/ai/scan-receipt")
 async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_user)):
@@ -306,3 +259,109 @@ async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_
         raise HTTPException(status_code=500, detail="Gemini got confused and didn't return valid JSON.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scanner error: {str(e)}")
+    
+# --- GAMIFICATION: PROFILES & POCKETS ---
+@app.get("/profile")
+async def get_profile(user = Depends(get_current_user)):
+    user_id = user.user.id
+    from datetime import datetime, timezone
+    
+    # Get basic profile
+    res = supabase.table("profiles").select("*").eq("id", user_id).execute()
+    profile_data = res.data[0] if res.data else {"id": user_id, "username": "EcoPalUser", "streak": 1, "reward_points": 100}
+
+    # Calculate Weather Grade
+    now = datetime.now(timezone.utc)
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0).isoformat()
+    tx_res = supabase.table("transactions").select("amount").eq("user_id", user_id).eq("type", "expense").gte("created_at", start_of_month).execute()
+    total_spent = sum([item["amount"] for item in tx_res.data])
+    
+    monthly_budget = 2000.00
+    
+    # Exact snake_case formatting as requested by the new doc
+    if total_spent >= monthly_budget * 0.9:
+        profile_data["spending_grade"] = "Unhealthy" 
+    elif total_spent >= monthly_budget * 0.7:
+        profile_data["spending_grade"] = "Moderate"  
+    else:
+        profile_data["spending_grade"] = "Healthy"   
+
+    # Add the required onboarding flag
+    profile_data["onboarding_completed"] = True
+
+    return profile_data
+
+@app.post("/profile/update")
+async def update_profile(req: ProfileUpdateRequest, user = Depends(get_current_user)):
+    supabase.table("profiles").update({"username": req.username}).eq("id", user.user.id).execute()
+    return {"message": "Profile updated"}
+
+@app.get("/pockets")
+async def get_pockets(user = Depends(get_current_user)):
+    res = supabase.table("pockets").select("*").eq("user_id", user.user.id).execute()
+    return res.data
+
+# --- GAMIFICATION: PET INTERACTION ---
+@app.get("/pet")
+async def get_pet(user = Depends(get_current_user)):
+    res = supabase.table("pets").select("*").eq("user_id", user.user.id).execute()
+    return res.data[0] if res.data else {}
+
+@app.post("/pet/interact")
+async def interact_pet(req: PetInteractRequest, user = Depends(get_current_user)):
+    user_id = user.user.id
+    from datetime import datetime, timezone
+    
+    pet = supabase.table("pets").select("*").eq("user_id", user_id).execute().data[0]
+    profile = supabase.table("profiles").select("*").eq("id", user_id).execute().data[0]
+    
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = {"last_interaction": now}
+    
+    if req.action == "feed":
+        if profile["reward_points"] < 50:
+            raise HTTPException(status_code=400, detail="Not enough reward points!")
+        
+        # Deduct 50 points
+        supabase.table("profiles").update({"reward_points": profile["reward_points"] - 50}).eq("id", user_id).execute()
+        
+        # New exact math: +30 hunger, +10 happiness
+        update_data["hunger_level"] = pet["hunger_level"] + 30
+        update_data["happiness_level"] = min(100, pet["happiness_level"] + 10)
+        
+        # Level up logic: subtract 100
+        if update_data["hunger_level"] >= 100:
+            update_data["level"] = pet["level"] + 1
+            update_data["hunger_level"] -= 100 
+            
+    elif req.action == "tap":
+        # New exact math: +15 happiness
+        update_data["happiness_level"] = min(100, pet["happiness_level"] + 15)
+        
+    supabase.table("pets").update(update_data).eq("user_id", user_id).execute()
+    return {"message": f"Pet {req.action} successful!"}
+
+# --- HABIT TAX ENDPOINTS ---
+class HabitTaxUpdateRequest(BaseModel):
+    available: bool
+
+@app.get("/habit-tax")
+async def get_habit_tax(user = Depends(get_current_user)):
+    user_id = user.user.id
+    
+    # Try to find their tax piggy bank
+    res = supabase.table("habit_tax").select("*").eq("user_id", user_id).execute()
+    
+    if not res.data:
+        # If they don't have one yet, create it starting at RM 0.00
+        new_tax = {"user_id": user_id, "amount": 0.00, "available": False}
+        res = supabase.table("habit_tax").insert(new_tax).execute()
+        return res.data[0]
+        
+    return res.data[0]
+
+@app.post("/habit-tax/update")
+async def update_habit_tax(req: HabitTaxUpdateRequest, user = Depends(get_current_user)):
+    # The frontend uses this to unlock the piggy bank!
+    supabase.table("habit_tax").update({"available": req.available}).eq("user_id", user.user.id).execute()
+    return {"message": "Habit Tax availability updated"}
