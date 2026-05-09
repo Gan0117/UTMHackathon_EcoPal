@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart' show rootBundle; 
 
 class ApiService {
-  static bool isMockData = true;
+  static bool isMockData = false;
 
   static const String baseUrl = 'http://127.0.0.1:8000';
 
@@ -329,5 +329,42 @@ class ApiService {
     // Randomize and return one of the tips
     _savingsTips.shuffle();
     return _savingsTips.first;
+  }
+
+  // Send the receipt file to FastAPI for AI Analysis
+  static Future<Map<String, dynamic>> scanReceipt(dynamic file) async {
+    // 1. Get the Supabase Auth Token so Python doesn't reject us
+    final session = Supabase.instance.client.auth.currentSession;
+    final token = session?.accessToken;
+
+    if (token == null) throw Exception('User not logged in');
+
+    // 2. Set up the URL (Make sure '/scan' matches your Python endpoint!)
+    final uri = Uri.parse('$baseUrl/scan');
+    
+    // 3. Create a "Multipart" request because we are sending a file
+    var request = http.MultipartRequest('POST', uri);
+    request.headers['Authorization'] = 'Bearer $token';
+
+    // 4. Attach the file (Handles both path-based Files and web-based bytes)
+    if (file is String) {
+      // If the file is passed as a string file path
+      request.files.add(await http.MultipartFile.fromPath('file', file));
+    } else if (file.path != null) {
+      // If the file is passed as an XFile or standard File object
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+    } else {
+      throw Exception('Unsupported file format sent to scanner');
+    }
+
+    // 5. Send it to Python and wait for Gemini to do its magic!
+    var streamedResponse = await request.send();
+    var response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Backend AI scan failed: ${response.statusCode}');
+    }
   }
 }

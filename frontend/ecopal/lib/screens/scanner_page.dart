@@ -199,16 +199,18 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
         allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'], 
       );
 
-      if (result != null) {
+      if (result != null && result.files.single.path != null) {
         String fileName = result.files.single.name;
-        _showScanningProgress(fileName); 
+        String filePath = result.files.single.path!; // Capture the actual file!
+        
+        _showScanningProgress(fileName, filePath); // Pass BOTH to the dialog
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to pick file.')));
     }
   }
 
-  void _showScanningProgress(String fileName) {
+  Future<void> _showScanningProgress(String fileName, String filePath) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -229,15 +231,30 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       },
     );
 
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context); 
-      _showConfirmationDialog({
-        "category": "Groceries", 
-        "amount": 42.50,
-        "description": "Extracted from: $fileName",
-        "created_at": DateTime.now().toIso8601String()
-      });
-    });
+    try {
+      // 1. Send the file to your backend (Make sure to pass your actual file variable here!)
+      // If your file is stored in a variable like '_selectedFile', pass it in.
+      final extractedData = await ApiService.scanReceipt(filePath); 
+
+      if (mounted) {
+        Navigator.pop(context); // Close the loading dialog
+        
+        // 2. Feed the REAL data from Gemini into the confirmation popup
+        _showConfirmationDialog({
+          "category": extractedData["category"] ?? "Education", 
+          "amount": extractedData["amount"] ?? 0.0,
+          "description": "Extracted from: $fileName",
+          "created_at": DateTime.now().toIso8601String()
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close the loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to analyze receipt with AI.')),
+        );
+      }
+    }
   }
 
   void _showAllRecordsTab() {

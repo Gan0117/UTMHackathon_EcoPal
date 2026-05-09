@@ -171,9 +171,17 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
   }
 
   String get _gifPath {
-    String f1 = _species.toLowerCase();
+    // 1. Force lowercase so we never fail the check
+    String safeSpecies = _species.toLowerCase(); 
+    
+    String f1 = safeSpecies;
     String f2 = _level <= 3 ? 'kitten' : 'cat';
-    String px = _species == 'Tabby' ? (_level <= 3 ? 'kit_' : 'cat_') : (_level <= 3 ? 'orkt_' : 'org_');
+    
+    // 2. Use the safe, lowercase version to check for 'tabby'
+    String px = safeSpecies == 'tabby' 
+        ? (_level <= 3 ? 'kit_' : 'cat_') 
+        : (_level <= 3 ? 'orkt_' : 'org_');
+        
     return 'widgets/$f1/$f2/${px}idle.gif';
   }
 

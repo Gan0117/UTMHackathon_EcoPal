@@ -46,6 +46,13 @@ class TransactionRequest(BaseModel):
     is_fixed: bool = False
     created_at: Optional[str] = None
 
+class PetUpdateRequest(BaseModel):
+    name: str
+    species: str
+    level: int = 1
+    hunger_level: int = 50
+    last_interaction: Optional[str] = None
+
 class PetInteractRequest(BaseModel):
     action: str # Expects "tap" or "feed"
 
@@ -314,7 +321,50 @@ async def get_pockets(user = Depends(get_current_user)):
 @app.get("/pet")
 async def get_pet(user = Depends(get_current_user)):
     res = supabase.table("pets").select("*").eq("user_id", user.user.id).execute()
-    return res.data[0] if res.data else {}
+    
+    if not res.data:
+        return {}
+        
+    pet_data = res.data[0]
+    
+    # --- THE SAFETY NET ---
+    current_species = pet_data.get("species", "").lower()
+    if current_species == "default" or current_species == "":
+        # Change this to orange so it matches the 'orkt' files!
+        pet_data["species"] = "orange" 
+        
+    return pet_data
+
+@app.post("/pet/update")
+async def update_pet(req: PetUpdateRequest, user = Depends(get_current_user)):
+    user_id = user.user.id
+    
+    # CRITICAL: Force the species to lowercase so we don't break the image folders again!
+    safe_species = req.species.lower() 
+    
+    pet_data = {
+        "user_id": user_id,
+        "name": req.name,
+        "species": safe_species,
+        "level": req.level,
+        "hunger_level": req.hunger_level,
+        "happiness_level": 100 # Good starting happiness!
+    }
+    
+    if req.last_interaction:
+        pet_data["last_interaction"] = req.last_interaction
+        
+    # Check if a pet already exists for this user
+    existing = supabase.table("pets").select("id").eq("user_id", user_id).execute()
+    
+    if existing.data:
+        # If they already have a pet, update it (e.g., they changed their mind)
+        supabase.table("pets").update(pet_data).eq("user_id", user_id).execute()
+    else:
+        # If they are a brand new user, insert the new pet
+        supabase.table("pets").insert(pet_data).execute()
+        
+    return {"message": "Companion initialized successfully!"}
 
 @app.post("/pet/interact")
 async def interact_pet(req: PetInteractRequest, user = Depends(get_current_user)):
@@ -374,3 +424,33 @@ async def update_habit_tax(req: HabitTaxUpdateRequest, user = Depends(get_curren
     # The frontend uses this to unlock the piggy bank!
     supabase.table("habit_tax").update({"available": req.available}).eq("user_id", user.user.id).execute()
     return {"message": "Habit Tax availability updated"}
+
+@app.get("/ai/behavior")
+async def get_behavior_analysis(user = Depends(get_current_user)):
+    # 1. Fetch user's recent spending history
+    res = supabase.table("transactions").select("*").eq("user_id", user.user.id).order("created_at", desc=True).limit(20).execute()
+    
+    if not res.data:
+        return {"analysis": "No spending data found yet. Start scanning receipts to see your behavior analysis!"}
+
+    # 2. Prepare the data for Gemini
+    history = "\n".join([f"- {t['category']}: ${t['amount']} ({t['description']})" for t in res.data])
+    
+    prompt = f"""
+    Analyze the following recent spending history and provide a short, 
+    2-sentence insight about the user's financial habits. 
+    Be encouraging but honest, like a financial pal.
+    
+    Spending History:
+    {history}
+    """
+
+    try: 
+        # 3. Call Gemini (Use 1.5-flash for better stability)
+        response = gemini_client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=[prompt]
+        )
+        return {"analysis": response.text.strip()}
+    except Exception as e:
+        return {"analysis": "Mochi is still calculating your habits. Check back shortly!"}

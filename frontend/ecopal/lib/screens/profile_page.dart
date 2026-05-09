@@ -77,9 +77,18 @@ class _ProfilePageState extends State<ProfilePage> {
 
   String get _currentGifPath {
     if (_petSpecies.isEmpty) return ''; 
-    String folder1 = _petSpecies.toLowerCase();
+    
+    // 1. Force lowercase so we never fail the check!
+    String safeSpecies = _petSpecies.toLowerCase(); 
+    
+    String folder1 = safeSpecies;
     String folder2 = _petLevel <= 3 ? 'kitten' : 'cat';
-    String prefix = _petSpecies == 'Tabby' ? (_petLevel <= 3 ? 'kit_' : 'cat_') : (_petLevel <= 3 ? 'orkt_' : 'org_');
+    
+    // 2. Use the safe, lowercase version to check for 'tabby'
+    String prefix = safeSpecies == 'tabby' 
+        ? (_petLevel <= 3 ? 'kit_' : 'cat_') 
+        : (_petLevel <= 3 ? 'orkt_' : 'org_');
+        
     return 'widgets/$folder1/$folder2/${prefix}idle.gif';
   }
 

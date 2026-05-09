@@ -79,9 +79,17 @@ class _PetRoomPageState extends State<PetRoomPage> {
   }
 
   String get _currentGifPath {
-    String folder1 = _species.toLowerCase(); 
+    // 1. Force the species to lowercase so we never fail a check!
+    String safeSpecies = _species.toLowerCase(); 
+    
+    String folder1 = safeSpecies; 
     String folder2 = _level <= 3 ? 'kitten' : 'cat'; 
-    String prefix = _species == 'Tabby' ? (_level <= 3 ? 'kit_' : 'cat_') : (_level <= 3 ? 'orkt_' : 'org_');
+    
+    // 2. Use the safe, lowercase version to check the prefix
+    String prefix = safeSpecies == 'tabby' 
+        ? (_level <= 3 ? 'kit_' : 'cat_') 
+        : (_level <= 3 ? 'orkt_' : 'org_');
+        
     return 'widgets/$folder1/$folder2/$prefix$_currentState.gif';
   }
 

@@ -53,8 +53,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ✅ FIX: Changed from StatefulWidget to StatelessWidget
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
