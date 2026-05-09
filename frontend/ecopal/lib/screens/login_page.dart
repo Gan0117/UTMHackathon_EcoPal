@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
+import 'pet_selection_page.dart';
+import '../widgets/floating_pet.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -10,13 +12,55 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  
+  final FocusNode _emailFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
+  
   bool _isLoading = false;
 
-  // --- SIGN UP FUNCTION ---
-  Future<void> _signUp() async {
+  // Animation variables for the floating icon
+  late AnimationController _floatController;
+  late Animation<double> _floatAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    //hide global floating pet
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showFloatingPet.value = false;
+    });
+    
+    // Listen for focus changes to trigger UI rebuilds (Glass -> Solid)
+    _emailFocus.addListener(() => setState(() {}));
+    _passwordFocus.addListener(() => setState(() {}));
+
+    // Setup the slow up-and-down floating animation
+    _floatController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2), // 2 seconds up, 2 seconds down
+    )..repeat(reverse: true);
+
+    _floatAnimation = Tween<double>(begin: -10.0, end: 10.0).animate(
+      CurvedAnimation(parent: _floatController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
+    _floatController.dispose(); // Always dispose animations!
+    super.dispose();
+  }
+
+  // --- STANDARD EMAIL AUTH ---
+  Future<void> _handleAuth(bool isLogin) async {
     setState(() => _isLoading = true);
     try {
       await Supabase.instance.client.auth.signUp(
@@ -98,142 +142,227 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  void _routeToPetRoom() {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const PetSelectionPage()),
+      );
+    }
+  }
+
+  Widget _buildDynamicInput({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String labelText,
+    required bool isPassword,
+  }) {
+    final bool isFocused = focusNode.hasFocus;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: isFocused ? Colors.white : Colors.white.withOpacity(0.2), // Solid vs Glass
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isFocused ? const Color(0xFF0F5238) : Colors.white.withOpacity(0.5),
+          width: 1.5,
+        ),
+        boxShadow: isFocused ? [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))
+        ] : [],
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        obscureText: isPassword,
+        style: TextStyle(color: isFocused ? Colors.black87 : Colors.white),
+        decoration: InputDecoration(
+          labelText: labelText,
+          labelStyle: TextStyle(
+            color: isFocused ? const Color(0xFF0F5238) : Colors.white.withOpacity(0.9),
+            fontWeight: isFocused ? FontWeight.bold : FontWeight.normal,
+          ),
+          border: InputBorder.none, 
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color primaryColor = Color(0xFF0F5238); 
-    const Color surfaceSoil = Color(0xFFFDFCF8); 
-    const Color onSurfaceVariant = Color(0xFF404943); 
 
     return Scaffold(
-      backgroundColor: surfaceSoil,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Logo
-                Container(
-                  width: 90,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE7E9E5),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('widgets/login_background.gif'),
+            fit: BoxFit.cover, 
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  
+                  // Floating Animated Icon
+                  AnimatedBuilder(
+                    animation: _floatAnimation,
+                    builder: (context, child) {
+                      return Transform.translate(
+                        offset: Offset(0, _floatAnimation.value),
+                        child: Container(
+                          width: 110,
+                          height: 110,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withOpacity(0.9), width: 4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 20,
+                                offset: Offset(0, 15 - _floatAnimation.value),
+                              )
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'widgets/ecopal_icon.png', 
+                              fit: BoxFit.cover, 
+                            ), 
+                          ),
+                        ),
+                      );
+                    }
                   ),
-                  child: Center(
-                    child: Image.asset('widgets/ecopal_icon.png', width: 48, height: 48), 
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                const Text('EcoPal', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: primaryColor)),
-                const Text('NATURAL FINANCE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2, color: onSurfaceVariant)),
-                
-                // The new subtitle
-                const SizedBox(height: 8),
-                const Text('Sign up to plant your first financial ecosystem.', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                const SizedBox(height: 32),
+                  const SizedBox(height: 16),
+                  
+                  // Title Text
+                  const Text('EcoPal', style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 2))])),
+                  const Text('NATURAL FINANCE', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 1.5, color: Colors.white70)),
+                  const SizedBox(height: 48),
 
-                // Inputs
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
+                  // Dynamic Inputs
+                  _buildDynamicInput(
+                    controller: _emailController,
+                    focusNode: _emailFocus,
                     labelText: 'Email',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    filled: true,
-                    fillColor: Colors.white,
+                    isPassword: false,
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordController,
-                  decoration: InputDecoration(
+                  const SizedBox(height: 16),
+                  _buildDynamicInput(
+                    controller: _passwordController,
+                    focusNode: _passwordFocus,
                     labelText: 'Password',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    filled: true,
-                    fillColor: Colors.white,
+                    isPassword: true,
                   ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 32),
 
-                if (_isLoading)
-                  const CircularProgressIndicator(color: primaryColor)
-                else
-                  Column(
-                    children: [
-                      // Separated Sign Up Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onPressed: _signUp, 
-                          child: const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      // Separated Login Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.black87,
-                            side: const BorderSide(color: Colors.grey, width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onPressed: _login, 
-                          child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-                      
-                      // Divider
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: Colors.grey.shade400)),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: Text('OR', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                          ),
-                          Expanded(child: Divider(color: Colors.grey.shade400)),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 24),
-
-                      // Google Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black87,
-                            elevation: 1,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(color: Colors.grey.shade300),
+                  if (_isLoading)
+                    const CircularProgressIndicator(color: Colors.white)
+                  else
+                    Column(
+                      children: [
+                        
+                        // Sign Up Button 
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton(
+                            style: ButtonStyle(
+                              // 🔥 Added Hover State Support
+                              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return primaryColor; 
+                                return primaryColor.withOpacity(0.4); // Glass
+                              }),
+                              foregroundColor: WidgetStateProperty.all(Colors.white),
+                              elevation: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return 8.0;
+                                return 0.0;
+                              }),
+                              shape: WidgetStateProperty.all(RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.5),
+                              )),
                             ),
+                            onPressed: () => _handleAuth(false), 
+                            child: const Text('Sign Up', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                           ),
-                          icon: Image.network('https://img.icons8.com/?size=100&id=17949&format=png&color=000000', height: 24),
-                          label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          onPressed: _googleSignIn,
                         ),
-                      ),
-                    ],
-                  ),
-              ],
+                        const SizedBox(height: 16),
+                        
+                        // Login Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton(
+                            style: ButtonStyle(
+                              // 🔥 Added Hover State Support
+                              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return Colors.white; 
+                                return Colors.white.withOpacity(0.15); // Glass
+                              }),
+                              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return primaryColor;
+                                return Colors.white;
+                              }),
+                              elevation: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return 8.0;
+                                return 0.0;
+                              }),
+                              shape: WidgetStateProperty.all(RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.5),
+                              )),
+                            ),
+                            onPressed: () => _handleAuth(true), 
+                            child: const Text('Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+                        
+                        // Google Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton.icon(
+                            style: ButtonStyle(
+                              // 🔥 Added Hover State Support
+                              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return Colors.white; 
+                                return Colors.white.withOpacity(0.2); // Glass
+                              }),
+                              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return Colors.black87;
+                                return Colors.white;
+                              }),
+                              elevation: WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) return 8.0;
+                                return 0.0;
+                              }),
+                              shape: WidgetStateProperty.all(RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.5),
+                              )),
+                            ),
+                            icon: Image.network('https://img.icons8.com/?size=100&id=17949&format=png&color=000000', height: 24),
+                            label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                            onPressed: _googleSignIn,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
         ),
