@@ -302,4 +302,32 @@ class ApiService {
     }
     throw Exception('Backend error');
   }
+
+  // ===========================================================================
+  // 11. SAVINGS TIPS (For the Floating Pet)
+  // ===========================================================================
+  static final List<String> _savingsTips = [
+    "Track every expense using a budgeting app or notebook daily.",
+    "Cook meals at home instead of ordering food frequently.",
+    "Set monthly savings goals and reward yourself responsibly afterward.",
+    "Avoid impulse purchases by waiting 24 hours before buying anything.",
+    "Use student discounts whenever shopping, dining, or subscribing online.",
+    "Bring a reusable water bottle and avoid buying expensive drinks.",
+    "Save spare change and small notes in a separate container.",
+    "Compare prices online before purchasing gadgets, clothes, or accessories.",
+    "Limit entertainment subscriptions and share family plans when possible.",
+    "Use public transport or carpool to reduce transportation expenses.",
+    "Sedikit-dikit, lama-lama menjadi bukit!",
+    "Gong Xi Fa Cai!"
+  ];
+
+  static Future<String> getSavingsTip() async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+    
+    // Randomize and return one of the tips
+    _savingsTips.shuffle();
+    return _savingsTips.first;
+  }
 }
