@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from supabase import create_client, Client
@@ -24,6 +25,14 @@ supabase: Client = create_client(url, key)
 gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows any app to connect
+    allow_credentials=True,
+    allow_methods=["*"], # Allows GET, POST, PUT, DELETE
+    allow_headers=["*"], # Allows the Authorization header
+)
 
 # Create the security scheme
 security = HTTPBearer()

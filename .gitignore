@@ -61,3 +61,4 @@ combo/
 reference/
 jscoverage_lib/
 temp/
+__pycache__/
