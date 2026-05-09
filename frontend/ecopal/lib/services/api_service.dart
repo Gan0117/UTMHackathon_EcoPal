@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart' show rootBundle; 
 
 class ApiService {
-  // 🔥 THE MASTER TOGGLE 🔥
   static bool isMockData = true;
 
   static const String baseUrl = 'http://127.0.0.1:8000';
@@ -98,7 +97,6 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // 🔥 Goal 5: Ensure API service handles sending the data to backend
   static Future<void> postTransaction(Map<String, dynamic> data) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -148,7 +146,7 @@ class ApiService {
   }
 
   // ===========================================================================
-  // 7. INTERACTIONS (Backend-driven calculations)
+  // 7. INTERACTIONS
   // ===========================================================================
   static Future<void> interactWithPet(String action) async {
     if (isMockData) {
@@ -166,45 +164,59 @@ class ApiService {
   }
 
   static Future<void> createPocket(Map<String, dynamic> data) async {
-  if (isMockData) {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return;
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return;
+    }
+    final token = _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/pockets'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode(data),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Backend error');
   }
-  final token = _getAuthToken();
-  final response = await http.post(
-    Uri.parse('$baseUrl/pockets'),
-    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-    body: jsonEncode(data),
-  );
-  if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Backend error');
-}
 
-static Future<void> updatePocket(String id, Map<String, dynamic> data) async {
-  if (isMockData) {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return;
+  static Future<void> updatePocket(String id, Map<String, dynamic> data) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return;
+    }
+    final token = _getAuthToken();
+    final response = await http.put(
+      Uri.parse('$baseUrl/pockets/$id'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode(data),
+    );
+    if (response.statusCode != 200) throw Exception('Backend error');
   }
-  final token = _getAuthToken();
-  final response = await http.put(
-    Uri.parse('$baseUrl/pockets/$id'),
-    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-    body: jsonEncode(data),
-  );
-  if (response.statusCode != 200) throw Exception('Backend error');
-}
 
-static Future<void> deletePocket(String id) async {
-  if (isMockData) {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return;
+  static Future<void> deletePocket(String id) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return;
+    }
+    final token = _getAuthToken();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/pockets/$id'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) throw Exception('Backend error');
   }
-  final token = _getAuthToken();
-  final response = await http.delete(
-    Uri.parse('$baseUrl/pockets/$id'),
-    headers: {'Authorization': 'Bearer $token'},
-  );
-  if (response.statusCode != 200 && response.statusCode != 204) throw Exception('Backend error');
-}
+
+  static Future<void> releasePocket(String id, double amountToRelease) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      return;
+    }
+    final token = _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/pockets/$id/release'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'amount': amountToRelease})
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) throw Exception('Backend error');
+  }
 
   // ===========================================================================
   // 8. SAFE TO SPEND BALANCE
@@ -235,12 +247,11 @@ static Future<void> deletePocket(String id) async {
     }
   }
 
-// ===========================================================================
-  // 9. HABIT TAX (AI INSIGHTS)
+  // ===========================================================================
+  // 9. HABIT TAX
   // ===========================================================================
   static Future<Map<String, dynamic>> getHabitTax() async {
     if (isMockData) {
-      // Return mock data matching the required schema
       final String jsonString = await rootBundle.loadString('assets/backend/data/habit_tax.json');
       final data = jsonDecode(jsonString);
       return data;
@@ -277,7 +288,7 @@ static Future<void> deletePocket(String id) async {
   }
 
   // ===========================================================================
-  // 10. BEHAVIOR ANALYSIS (Specific Insight for the Chart)
+  // 10. BEHAVIOR ANALYSIS
   // ===========================================================================
   static Future<String> getBehaviorAnalysis() async {
     if (isMockData) {

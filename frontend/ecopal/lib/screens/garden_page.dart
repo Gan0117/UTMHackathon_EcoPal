@@ -13,6 +13,7 @@ class MoneyPocket {
   int growthStage;
   bool isLocked;
   bool isAutoDeduct;
+  double autoDeductAmount;
 
   MoneyPocket({
     required this.id,
@@ -21,7 +22,8 @@ class MoneyPocket {
     required this.currentBalance,
     required this.growthStage,
     required this.isLocked,
-    this.isAutoDeduct = false, // 默认是 false
+    this.isAutoDeduct = false,
+    this.autoDeductAmount = 0.0,
   });
 
   factory MoneyPocket.fromJson(Map<String, dynamic> json) {
@@ -33,6 +35,7 @@ class MoneyPocket {
       growthStage: json['growth_stage'] ?? 1,
       isLocked: json['is_locked'] ?? false,
       isAutoDeduct: json['is_auto_deduct'] ?? false,
+      autoDeductAmount: (json['auto_deduct_amount'] ?? 0).toDouble(),
     );
   }
 
@@ -44,6 +47,7 @@ class MoneyPocket {
     'growth_stage': growthStage,
     'is_locked': isLocked,
     'is_auto_deduct': isAutoDeduct,
+    'auto_deduct_amount': autoDeductAmount,
   };
 }
 
@@ -64,21 +68,22 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   bool _isLoading = true;
   String? _error;
   double _safeToSpend = 0.0;
+  
   String? _petSpecies;
+  int _petLevel = 1;
+  
   bool _isMapInitialized = false;
 
   final TransformationController _transformationController = TransformationController();
   late AnimationController _animationController;
   Animation<Matrix4>? _animation;
 
-  // 树木Z字形排列：边界是 X(820~1100), Y(260~820)
-  // 这个群体的绝对中心点是 (960, 540)
   static const List<Offset> _staggeredWorldPositions = [
-    Offset(820, 260),   // 1 - 左上
-    Offset(1100, 400),  // 2 - 右中上
-    Offset(820, 540),   // 3 - 左中
-    Offset(1100, 680),  // 4 - 右中下
-    Offset(820, 820),   // 5 - 左下
+    Offset(820, 260),   
+    Offset(1100, 400),  
+    Offset(820, 540),   
+    Offset(1100, 680),  
+    Offset(820, 820),   
   ];
 
   @override
@@ -114,24 +119,16 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  // 🌟 替换这一整段 _recenterMap 函数
   void _recenterMap({bool animated = true}) {
     if (!mounted) return;
 
     final screenSize = MediaQuery.of(context).size;
-    
-    // 聚焦树群的正中心位置 (根据 Z字型 算出来的绝对中心)
     const targetX = 960.0;
     const targetY = 540.0;
     
-    // 🌟 核心修改：计算"最 minimize"的比例！
-    // 取屏幕宽度的比例和高度的比例的最大值，保证尽可能缩小看全植物，但绝对不漏黑边。
     final minScaleToFit = math.max(screenSize.width / 1920.0, screenSize.height / 1080.0);
-    
-    // 强制每次 Recenter 都回到最缩小的全景状态
     final targetScale = minScaleToFit;
 
-    // 计算平移量，让目标点居中
     final dx = (screenSize.width / 2) - (targetX * targetScale);
     final dy = (screenSize.height / 2) - (targetY * targetScale);
 
@@ -160,36 +157,27 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     return 'sunny';
   }
 
-  String _treeImage(int pocketIndex, double currentBalance, double targetAmount) {
-    final progress = targetAmount > 0 ? currentBalance / targetAmount : 0.0;
+  String _treeImage(int pocketIndex, int growthStage) {
     final names = ['first', 'second', 'third', 'fourth', 'fifth'];
     final name = names[pocketIndex.clamp(0, 4)];
-    if (progress >= 1.0) return 'widgets/dashboard/${name}_tree_big.png';
-    if (progress >= 0.7) return 'widgets/dashboard/${name}_tree_medium.png';
+    if (growthStage >= 3) return 'widgets/dashboard/${name}_tree_big.png';
+    if (growthStage == 2) return 'widgets/dashboard/${name}_tree_medium.png';
     return 'widgets/dashboard/${name}_tree_small.png';
   }
 
-  // 🌟 Big 植物变成 Small 的 1.7 倍
-  Size _getTreeSize(double currentBalance, double targetAmount) {
-    final progress = targetAmount > 0 ? currentBalance / targetAmount : 0.0;
+  Size _getTreeSize(int growthStage) {
     final smallSize = 240.0;
-    
-    if (progress >= 1.0) {
-      return Size(smallSize * 1.7, smallSize * 1.7); // 1.7x
-    } else if (progress >= 0.7) {
-      return Size(smallSize * 1.4, smallSize * 1.4); // 1.4x
-    }
-    
-    return Size(smallSize, smallSize); // 1x
+    if (growthStage >= 3) return Size(smallSize * 1.7, smallSize * 1.7); 
+    if (growthStage == 2) return Size(smallSize * 1.4, smallSize * 1.4); 
+    return Size(smallSize, smallSize);
   }
 
-  
   String get _catHappyGif {
-    if (_petSpecies == 'Orange') {
-      return 'widgets/orange/kitten/orkt_happy.gif'; // 确保你的文件夹里有这个文件！
-    }
-    // 默认是 Tabby
-    return 'widgets/tabby/kitten/kit_happy.gif'; // 确保你的文件夹里有这个文件！
+    if (_petSpecies == null) return '';
+    String folder1 = _petSpecies!.toLowerCase(); 
+    String folder2 = _petLevel <= 3 ? 'kitten' : 'cat'; 
+    String prefix = _petSpecies == 'Tabby' ? (_petLevel <= 3 ? 'kit_' : 'cat_') : (_petLevel <= 3 ? 'orkt_' : 'org_');
+    return 'widgets/$folder1/$folder2/${prefix}happy.gif'; 
   }
 
   Future<void> _loadData() async {
@@ -201,15 +189,15 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
       final results = await Future.wait([
         ApiService.getPockets(),
         ApiService.getSafeToSpendBalance(),
-        ApiService.getPetStatus(), // 🌟 1. 加这行去拿猫咪数据
+        ApiService.getPetStatus(),
       ]);
       setState(() {
         _pockets = (results[0] as List<dynamic>).map((e) => MoneyPocket.fromJson(e)).toList();
         _safeToSpend = results[1] as double;
         
-        // 🌟 2. 把猫咪的种类存起来 (Tabby 还是 Orange)
         final petData = results[2] as Map<String, dynamic>;
-        _petSpecies = petData['species']; 
+        _petSpecies = petData['species'] ?? 'Tabby'; 
+        _petLevel = petData['level'] ?? 1; 
         
         _isLoading = false;
       });
@@ -222,7 +210,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   }
 
   double get _totalTarget => _pockets.fold(0, (sum, p) => sum + p.targetAmount);
-
   String get _currentWeather => _weatherState(_safeToSpend, _totalTarget);
 
   String _formatAmount(double amount) {
@@ -256,16 +243,110 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     if (_deleteMode) setState(() => _deleteMode = false);
   }
 
+  void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
+    final pocket = _pockets[index];
+    final String msg = isFromReleaseButton
+        ? 'Confirm to release ${pocket.name} money to main acc. This money pocket will be delete at the same time.'
+        : 'After remove the money pocket, your money will move to your main account.';
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: const Color(0xFFEDEDEF),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(color: const Color(0xFFFFE0E0), borderRadius: BorderRadius.circular(10)),
+                    child: Icon(isFromReleaseButton ? Icons.payments_outlined : Icons.delete_outline, color: Colors.redAccent, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(isFromReleaseButton ? 'Release Funds' : 'Delete Plant', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(msg, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() => _deleteMode = false);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: const BorderSide(color: Color(0xFFB0B0B3)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        try {
+                          await ApiService.releasePocket(pocket.id, pocket.currentBalance);
+                          
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                            _loadData(); 
+                            setState(() => _deleteMode = false);
+                            
+                            // 🔥 Show Success Message on successful deletion / release
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  isFromReleaseButton 
+                                    ? 'Funds successfully released to main account!' 
+                                    : 'Plant successfully deleted and funds transferred!'
+                                ),
+                                behavior: SnackBarBehavior.floating,
+                              )
+                            );
+                          }
+                        } catch (_) {
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                      ),
+                      child: const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showMaxPocketsMessage() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: const Color(0xFFEDEDEF),
-        title: const Text('Maximum Reached',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-        content: const Text('You can only add 5 money pockets.',
-            style: TextStyle(color: Colors.black54)),
+        title: const Text('Maximum Reached', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+        content: const Text('You can only add 5 money pockets.', style: TextStyle(color: Colors.black54)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -307,8 +388,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                       child: const Icon(Icons.eco, color: Color(0xFF4CAF50), size: 20),
                     ),
                     const SizedBox(width: 12),
-                    const Text('Create Money Pocket',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+                    const Text('Create Money Pocket', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -366,13 +446,19 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                       child: ElevatedButton(
                         onPressed: () async {
                           if (formKey.currentState!.validate()) {
+                            final currentBal = double.parse(balanceController.text);
+                            final targetAmt = double.parse(targetController.text);
+                            final isLocked = currentBal >= targetAmt;
+
                             final newPocket = MoneyPocket(
                               id: 'p${DateTime.now().millisecondsSinceEpoch}',
                               name: nameController.text.trim(),
-                              targetAmount: double.parse(targetController.text),
-                              currentBalance: double.parse(balanceController.text),
+                              targetAmount: targetAmt,
+                              currentBalance: currentBal,
                               growthStage: 1,
-                              isLocked: false,
+                              isLocked: isLocked,
+                              isAutoDeduct: false,
+                              autoDeductAmount: 0.0,
                             );
                             try {
                               await ApiService.createPocket(newPocket.toJson());
@@ -387,8 +473,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 0,
                         ),
-                        child: const Text('Create',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: const Text('Create', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -433,8 +518,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                       child: const Icon(Icons.edit, color: Color(0xFF4CAF50), size: 20),
                     ),
                     const SizedBox(width: 12),
-                    const Text('Edit Money Pocket',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+                    const Text('Edit Money Pocket', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -492,13 +576,19 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                       child: ElevatedButton(
                         onPressed: () async {
                           if (formKey.currentState!.validate()) {
+                            final currentBal = double.parse(balanceController.text);
+                            final targetAmt = double.parse(targetController.text);
+                            final isLocked = currentBal >= targetAmt;
+
                             final updated = MoneyPocket(
                               id: pocket.id,
                               name: nameController.text.trim(),
-                              targetAmount: double.parse(targetController.text),
-                              currentBalance: double.parse(balanceController.text),
+                              targetAmount: targetAmt,
+                              currentBalance: currentBal,
                               growthStage: pocket.growthStage,
-                              isLocked: pocket.isLocked,
+                              isLocked: isLocked,
+                              isAutoDeduct: isLocked ? false : pocket.isAutoDeduct,
+                              autoDeductAmount: pocket.autoDeductAmount, 
                             );
                             try {
                               await ApiService.updatePocket(pocket.id, updated.toJson());
@@ -513,8 +603,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 0,
                         ),
-                        child: const Text('Save',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -528,8 +617,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   }
 
   Widget _buildFieldLabel(String label) {
-    return Text(label,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5));
+    return Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5));
   }
 
   Widget _buildTextField({
@@ -560,88 +648,15 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
-  void _showDeleteConfirm(int index) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: const Color(0xFFEDEDEF),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(color: const Color(0xFFFFE0E0), borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text('Delete Plant', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text('Are you sure you want to delete "${_pockets[index].name}"?',
-                  style: const TextStyle(fontSize: 14, color: Colors.black54)),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        setState(() => _deleteMode = false);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        side: const BorderSide(color: Color(0xFFB0B0B3)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        try {
-                          await ApiService.deletePocket(_pockets[index].id);
-                        } catch (_) {}
-                        setState(() {
-                          _pockets.removeAt(index);
-                          _deleteMode = false;
-                        });
-                        if (ctx.mounted) Navigator.pop(ctx);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                      ),
-                      child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void _showPocketDetails(MoneyPocket pocket, int index) {
+    final deductAmountController = TextEditingController(text: pocket.autoDeductAmount > 0 ? pocket.autoDeductAmount.toStringAsFixed(2) : '');
+    bool isSaveClicked = false;
 
-void _showPocketDetails(MoneyPocket pocket, int index) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         backgroundColor: const Color(0xFFEDEDEF),
-        // 🌟 核心：使用 StatefulBuilder 让弹窗内部的 Switch 可以实时刷新动画
         child: StatefulBuilder(
           builder: (BuildContext context, StateSetter setStateDialog) {
             
@@ -655,47 +670,68 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- 头部：图标、名称、锁 ---
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       SizedBox(
                         width: 40, height: 40,
-                        child: Image.asset(_treeImage(index, pocket.currentBalance, pocket.targetAmount),
+                        child: Image.asset(_treeImage(index, pocket.growthStage),
                             width: 40, height: 40, fit: BoxFit.contain),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(pocket.name,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                        child: Text(pocket.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                       ),
-                      if (pocket.isLocked) const Icon(Icons.lock, color: Colors.grey, size: 18),
+                      
+                      if (pocket.isLocked) 
+                        const Icon(Icons.lock, color: Colors.grey, size: 20)
+                      else 
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _showReleaseConfirm(index, isFromReleaseButton: false);
+                          },
+                          child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 24),
+                        ),
                     ],
                   ),
+                  
+                  if (pocket.isLocked) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.shade200)),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green, size: 20),
+                          SizedBox(width: 8),
+                          Expanded(child: Text('Goal Met! This pocket has reached its target.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13))),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 16),
 
-                  // --- 目标金额 ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Target', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
-                      Text('RM${pocket.targetAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
+                      Text('RM${pocket.targetAmount.toStringAsFixed(2)}', style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
                     ],
                   ),
                   const SizedBox(height: 8),
 
-                  // --- 当前金额 ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Current', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
-                      Text('RM${pocket.currentBalance.toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
+                      Text('RM${pocket.currentBalance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 14)),
                     ],
                   ),
                   const SizedBox(height: 14),
 
-                  // --- 进度条 ---
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: LinearProgressIndicator(
@@ -706,14 +742,12 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text('${(progress * 100).toStringAsFixed(1)}% of goal',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  Text('${(progress * 100).toStringAsFixed(1)}% of goal', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                   
                   const SizedBox(height: 20),
-                  const Divider(color: Color(0xFFD0D0D3), thickness: 1), // 🌟 分割线
+                  const Divider(color: Color(0xFFD0D0D3), thickness: 1),
                   const SizedBox(height: 16),
 
-                  // --- 🌟 Auto Deduct (Habit Tax) 区域 ---
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -725,14 +759,10 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                               children: [
                                 const Text('Auto Deduct', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                                 const SizedBox(width: 10),
-                                // ACTIVE Badge (只有打开时才显示)
-                                if (pocket.isAutoDeduct)
+                                if (pocket.isAutoDeduct && !pocket.isLocked)
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFDF5E6), // 浅黄背景
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                                    decoration: BoxDecoration(color: const Color(0xFFFDF5E6), borderRadius: BorderRadius.circular(12)),
                                     child: const Text('ACTIVE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFD4A373))),
                                   ),
                               ],
@@ -744,45 +774,85 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      
-                      // 🌟 开关 Toggle
-                      Switch(
-                        value: pocket.isAutoDeduct,
-                        activeColor: const Color(0xFFE5B94A), // 金色
-                        onChanged: (val) async {
-                          setStateDialog(() {
-                            pocket.isAutoDeduct = val;
-                          });
-
-                          if (val) {
-                            final deductAmount = pocket.currentBalance;
-
-                            setState(() {
-                              _safeToSpend -= deductAmount;
-                            });
-
-                            setStateDialog(() {});
-
-                            try {
-                              await ApiService.updatePocket(pocket.id, pocket.toJson());
-                              await ApiService.updateProfile({'safe_to_spend_balance': _safeToSpend});
-                            } catch (e) {
-                              debugPrint('Failed to update auto deduct: $e');
-                            }
-                          } else {
+                      if (pocket.isLocked)
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _showReleaseConfirm(index, isFromReleaseButton: true);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                          child: const Text('Release', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        )
+                      else
+                        Switch(
+                          value: pocket.isAutoDeduct,
+                          activeColor: const Color(0xFFE5B94A),
+                          onChanged: (val) async {
+                            setStateDialog(() => pocket.isAutoDeduct = val);
                             try {
                               await ApiService.updatePocket(pocket.id, pocket.toJson());
                             } catch (e) {
                               debugPrint('Failed to update auto deduct: $e');
                             }
-                          }
-                        },
-                      ),
+                          },
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 24),
 
-                  // --- 底部按钮 (Close & Edit) ---
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    child: pocket.isAutoDeduct && !pocket.isLocked
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: deductAmountController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: InputDecoration(
+                                    labelText: 'Deduction Amount (RM)',
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  setStateDialog(() => isSaveClicked = true);
+                                  pocket.autoDeductAmount = double.tryParse(deductAmountController.text) ?? 0.0;
+                                  try {
+                                    await ApiService.updatePocket(pocket.id, pocket.toJson());
+                                    if (ctx.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deduction amount saved!')));
+                                      Navigator.pop(ctx); 
+                                    }
+                                  } catch (e) {
+                                    debugPrint('Failed to save deduction amount: $e');
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isSaveClicked ? Colors.redAccent : const Color(0xFFE5B94A),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                ),
+                                child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                  ),
+
+                  const SizedBox(height: 24),
+                  
                   Row(
                     children: [
                       Expanded(
@@ -826,39 +896,43 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
   }
 
   Widget _buildWeatherLayer(String weather) {
+    double layerOpacity = 0.0;
+    String assetPath = '';
+
+    if (weather == 'storm') {
+      assetPath = 'widgets/dashboard/storm.gif';
+      layerOpacity = 0.55;
+    } else if (weather == 'overcast') {
+      assetPath = 'widgets/dashboard/overcast.gif';
+      layerOpacity = 0.40;
+    } else {
+      assetPath = 'widgets/dashboard/sunny.gif';
+      layerOpacity = 0.35; 
+    }
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 1200),
       child: IgnorePointer(
         key: ValueKey(weather),
-        child: weather == 'sunny'
-            ? const SizedBox.shrink()
-            : Opacity(
-                opacity: weather == 'storm' ? 0.55 : 0.40,
-                child: SizedBox(
-                  width: 1920,
-                  height: 1080,
-                  child: Image.asset(
-                    weather == 'storm'
-                        ? 'widgets/dashboard/storm.gif'
-                        : 'widgets/dashboard/overcast.gif',
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
+        child: Opacity(
+          opacity: layerOpacity,
+          child: SizedBox(
+            width: 1920,
+            height: 1080,
+            child: Image.asset(assetPath, fit: BoxFit.cover),
+          ),
+        ),
       ),
     );
   }
 
-  // 🌟 核心：统一生成树木的组件，供两个图层复用
   Widget _buildTreeItem(int i, {required bool isDeleteTopLayer}) {
-    // 如果是底层（正常模式），且开启了删除模式，则不在底层渲染，交由顶层渲染
     if (!isDeleteTopLayer && _deleteMode) return const SizedBox.shrink();
 
     final pocket = _pockets[i];
-    final treeSize = _getTreeSize(pocket.currentBalance, pocket.targetAmount);
+    final treeSize = _getTreeSize(pocket.growthStage);
     final centerPos = _staggeredWorldPositions[i];
     
-    // 判断该植物在左边还是右边 (960 是中线)
     final bool isLeftPlant = centerPos.dx < 960.0;
 
     return Positioned(
@@ -870,7 +944,7 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
         child: GestureDetector(
           onTap: () {
             if (_deleteMode) {
-              _showDeleteConfirm(i);
+              _showReleaseConfirm(i, isFromReleaseButton: false);
             } else {
               _showPocketDetails(_pockets[i], i);
             }
@@ -882,18 +956,17 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                 width: treeSize.width,
                 height: treeSize.height,
                 child: Image.asset(
-                  _treeImage(i, pocket.currentBalance, pocket.targetAmount),
+                  _treeImage(i, pocket.growthStage),
                   fit: BoxFit.contain,
                 ),
               ),
               
-              // 删除模式下显示的红叉
               if (_deleteMode)
                 Positioned(
                   top: 10,
                   right: 10,
                   child: Container(
-                    width: 32, // 稍微加大点击区域
+                    width: 32, 
                     height: 32,
                     decoration: BoxDecoration(
                       color: Colors.redAccent, 
@@ -907,17 +980,16 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                   ),
                 ),
                 
-              // 🌟 智能气泡提示：左边的在左边，右边的在右边
               if (_hoveredPlantIndex == i && !_deleteMode)
                 Positioned(
-                  top: treeSize.height * 0.1, // 高度位于树木稍上方
-                  left: isLeftPlant ? null : treeSize.width * 0.65, // 右边植物，气泡靠右
-                  right: isLeftPlant ? treeSize.width * 0.65 : null, // 左边植物，气泡靠左
+                  top: treeSize.height * 0.1,
+                  left: isLeftPlant ? null : treeSize.width * 0.65, 
+                  right: isLeftPlant ? treeSize.width * 0.65 : null, 
                   child: Container(
-                    width: 170, // 设定固定宽度，避免文字太长撑破
+                    width: 170, 
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9), // 背景稍微实一点，防止透树木
+                      color: Colors.white.withOpacity(0.9), 
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
@@ -990,9 +1062,6 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
       ),
       body: Stack(
         children: [
-          // ---------------------------------------------------------
-          // LAYER 1: 基础游戏世界 (正常模式下的背景、树、天气)
-          // ---------------------------------------------------------
           GestureDetector(
             onTap: _onBackgroundTap,
             child: Positioned.fill(
@@ -1007,28 +1076,25 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                   height: 1080,
                   child: Stack(
                     children: [
-                      Image.asset('widgets/dashboard/sunny.gif', width: 1920, height: 1080, fit: BoxFit.cover),
+                      Image.asset('widgets/dashboard/farm.gif', width: 1920, height: 1080, fit: BoxFit.cover),
                       Positioned(
-                        left: 1040, // 黑色空圈的 X 坐标
-                        top: 870,   // 黑色空圈的 Y 坐标
+                        left: 1040, 
+                        top: 870,   
                         child: SizedBox(
-                          width: 120, // 鱼桶大小，可以自己调
+                          width: 120, 
                           height: 120,
                           child: Image.asset('widgets/dashboard/bucket_fish.png', fit: BoxFit.contain),
                         ),
                       ),
 
-                      // 🌟 新增：猫咪 (加入 Hover 提示 和 点击跳转)
-                      // 🌟 新增：猫咪 (完美点击范围 + 右侧提示框)
-                      if (_petSpecies != null) 
+                      if (_petSpecies != null && weather != 'storm') 
                         Positioned(
-                          left: 1100, // 猫咪的 X 坐标
-                          top: 840,   // 猫咪的 Y 坐标
+                          left: 1100, 
+                          top: 840,   
                           child: MouseRegion(
                             onEnter: (_) => setState(() => _isHoveringCat = true),
                             onExit: (_) => setState(() => _isHoveringCat = false),
                             child: GestureDetector(
-                              // 🌟 核心修复1：让透明背景也完全可以被点击！
                               behavior: HitTestBehavior.translucent, 
                               onTap: () {
                                 Navigator.push(
@@ -1042,18 +1108,16 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
                                 clipBehavior: Clip.none,
                                 alignment: Alignment.center,
                                 children: [
-                                  // 1. 扩大点击范围的隐形盒子 + 猫咪图片
                                   Container(
                                     width: 140, 
                                     height: 140,
-                                    color: Colors.transparent, // 🌟 核心修复2：撑起整个点击区域
+                                    color: Colors.transparent, 
                                     child: Image.asset(_catHappyGif, fit: BoxFit.contain),
                                   ),
                                   
-                                  // 2. 🌟 专属的 "Feed it!" 气泡，固定在猫的右边
                                   if (_isHoveringCat)
                                     Positioned(
-                                      left: 120, // 位置在猫(宽140)的右边一点点
+                                      left: 120, 
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                         decoration: BoxDecoration(
@@ -1088,9 +1152,6 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
             ),
           ),
 
-          // ---------------------------------------------------------
-          // LAYER 2: 原生 UI 层 (Safe to spend, Recenter 按钮等)
-          // ---------------------------------------------------------
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
 
@@ -1215,20 +1276,15 @@ void _showPocketDetails(MoneyPocket pocket, int index) {
               ),
             ),
 
-          // ---------------------------------------------------------
-          // 🌟 LAYER 3: 绝对置顶的删除模式覆盖层 (Z-Index 最高)
-          // ---------------------------------------------------------
           if (_deleteMode)
             Positioned.fill(
               child: Stack(
                 children: [
-                  // 1. 半透明遮罩层，直接挡在所有原生 UI（包括 Safe to spend 卡片）上面
                   GestureDetector(
                     onTap: () => setState(() => _deleteMode = false),
-                    child: Container(color: Colors.black.withOpacity(0.25)), // 颜色稍加深以区分层级
+                    child: Container(color: Colors.black.withOpacity(0.25)), 
                   ),
                   
-                  // 2. 映射背景缩放比例的树木实体层，保证红叉按钮不仅置顶，位置还和地图丝毫不差
                   ValueListenableBuilder<Matrix4>(
                     valueListenable: _transformationController,
                     builder: (context, matrix, child) {
