@@ -66,10 +66,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   String? _activeDescription;
   bool _isHoveringRecenter = false; 
   bool _isHoveringCat = false;
-  bool _isHoveringPetHouse = false;
-  bool _isHoveringComputer = false;
-  bool _isHoveringBook = false;
-  bool _isHoveringProfile = false;
   int? _hoveredPlantIndex;
   List<MoneyPocket> _pockets = [];
   bool _deleteMode = false;
@@ -81,7 +77,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   int _petLevel = 1;
   
   bool _isMapInitialized = false;
-  bool _showPocketList = false;
 
   final TransformationController _transformationController = TransformationController();
   late AnimationController _animationController;
@@ -256,6 +251,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     if (_deleteMode) setState(() => _deleteMode = false);
   }
 
+  // 🔥 Goal 1 & 3: Delete and Release mode integrated via ApiService
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
     final pocket = _pockets[index];
     final String msg = isFromReleaseButton
@@ -316,21 +312,33 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             _loadData(); 
                             setState(() => _deleteMode = false);
                             
-                            // 🔥 Show Success Message on successful deletion / release
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  isFromReleaseButton 
-                                    ? 'Funds successfully released to main account!' 
-                                    : 'Plant successfully deleted and funds transferred!'
+                                content: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        isFromReleaseButton 
+                                          ? 'Funds successfully released to main account!' 
+                                          : '🌱 Plant removed. Funds returned to main account!',
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                                backgroundColor: const Color(0xFF2E7D32),
                                 behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                duration: const Duration(seconds: 3),
                               )
                             );
                           }
                         } catch (_) {
                           if (ctx.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
                           }
                         }
                       },
@@ -939,8 +947,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildTreeItem(int i, {required bool isDeleteTopLayer}) {
-    if (!isDeleteTopLayer && _deleteMode) return const SizedBox.shrink();
+  Widget _buildTreeItem(int i) {
 
     final pocket = _pockets[i];
     final treeSize = _getTreeSize(pocket.growthStage);
@@ -1091,7 +1098,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                     children: [
                       Image.asset('widgets/dashboard/farm.gif', width: 1920, height: 1080, fit: BoxFit.cover),
 
-                      // 🌟 Pocket List - 固定在地图左边
+                      // 🌟 Pocket List 
                     if (!_isLoading && _error == null && _pockets.isNotEmpty)
                       Positioned(
                         left: 50,
@@ -1190,7 +1197,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                       ),
 
                       Positioned(
-                        left: 1020, 
+                        left: 1040, 
                         top: 870,   
                         child: SizedBox(
                           width: 120, 
@@ -1199,15 +1206,12 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                         ),
                       ),
 
-                    
-
                       if (_petSpecies != null && weather != 'storm') 
                         Positioned(
                           left: 1100, 
                           top: 840,   
                           child: MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringCat = true),
-                            onExit: (_) => setState(() => _isHoveringCat = false),
+                            cursor: SystemMouseCursors.click,
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent, 
                               onTap: () {
@@ -1228,38 +1232,19 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                     color: Colors.transparent, 
                                     child: Image.asset(_catHappyGif, fit: BoxFit.contain),
                                   ),
-                                  
-                                  if (_isHoveringCat)
-                                    Positioned(
-                                      left: 120, 
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.95),
-                                          borderRadius: BorderRadius.circular(14),
-                                          boxShadow: [
-                                            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                                          ],
-                                        ),
-                                        child: const Text(
-                                          'Feed it!',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
-                                        ),
-                                      ),
-                                    ),
                                 ],
                               ),
                             ),
                           ),
                         ),
 
-                       if (_petSpecies != null)
+                      // 🔥 Goal 2: Black box labels for the icons
+                      if (_petSpecies != null)
                         Positioned(
                           left: 1500,
-                          top: 600,
+                          top: 560,
                           child: MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringPetHouse = true),
-                            onExit: (_) => setState(() => _isHoveringPetHouse = false),
+                            cursor: SystemMouseCursors.click,
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onTap: () {
@@ -1270,49 +1255,34 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                   _loadData();
                                 });
                               },
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                alignment: Alignment.center,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  SizedBox(
-                                  width: 350,
-                                  height: 350,
-                                  child: Image.asset(
-                                    'widgets/dashboard/pet_house.png',
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                                  if (_isHoveringPetHouse)
-                                    Positioned(
-                                      left: 80,
-                                      top: 340,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.95),
-                                          borderRadius: BorderRadius.circular(14),
-                                          boxShadow: [
-                                            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                                          ],
-                                        ),
-                                        child: const Text(
-                                          'Pet House',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
-                                        ),
-                                      ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
+                                    child: const Text('Pet Room', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: 350,
+                                    height: 350,
+                                    child: Image.asset('widgets/dashboard/pet_house.png', fit: BoxFit.contain),
+                                  ),
                                 ],
                               ),
                             ),
                           ),
                         ),
 
-                        Positioned(
+                      Positioned(
                         left: 1500,
-                        top: 200,
+                        top: 160,
                         child: MouseRegion(
-                          onEnter: (_) => setState(() => _isHoveringProfile = true),
-                          onExit: (_) => setState(() => _isHoveringProfile = false),
+                          cursor: SystemMouseCursors.click,
                           child: GestureDetector(
                             behavior: HitTestBehavior.translucent,
                             onTap: () {
@@ -1321,43 +1291,35 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                 MaterialPageRoute(builder: (context) => const ProfilePage()),
                               );
                             },
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.center,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Profile', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(height: 8),
                                 SizedBox(
                                   width: 350,
                                   height: 350,
                                   child: Image.asset('widgets/dashboard/profile_shadow.png', fit: BoxFit.contain),
                                 ),
-                                if (_isHoveringProfile)
-                                  Positioned(
-                                    left: 80,
-                                    top: 340,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.95),
-                                        borderRadius: BorderRadius.circular(14),
-                                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3))],
-                                      ),
-                                      child: const Text('Profile', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                    ),
-                                  ),
                               ],
                             ),
                           ),
                         ),
                       ),
 
-                        // 🌟 新增：Pet Book (Scanner)
                       if (_petSpecies != null)
                       Positioned(
                         left: 1280,
-                        top: 700,
+                        top: 660,
                         child: MouseRegion(
-                          onEnter: (_) => setState(() => _isHoveringBook = true),
-                          onExit: (_) => setState(() => _isHoveringBook = false),
+                          cursor: SystemMouseCursors.click,
                           child: GestureDetector(
                             behavior: HitTestBehavior.translucent,
                             onTap: () {
@@ -1366,43 +1328,35 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                 MaterialPageRoute(builder: (context) => const ScannerPage()),
                               );
                             },
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.center,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Scanner', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(height: 8),
                                 SizedBox(
                                   width: 160,
                                   height: 160,
                                   child: Image.asset('widgets/dashboard/pet_book.png', fit: BoxFit.contain),
                                 ),
-                                if (_isHoveringBook)
-                                  Positioned(
-                                    left: 80,
-                                    top: 150,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.95),
-                                        borderRadius: BorderRadius.circular(14),
-                                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3))],
-                                      ),
-                                      child: const Text('Scanner', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                    ),
-                                  ),
                               ],
                             ),
                           ),
                         ),
                       ),
 
-                      // 🌟 新增：Computer (Insights)
                       if (_petSpecies != null)
                         Positioned(
                           left: 1200,
-                          top: 300,
+                          top: 260,
                           child: MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringComputer = true),
-                            onExit: (_) => setState(() => _isHoveringComputer = false),
+                            cursor: SystemMouseCursors.click,
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onTap: () {
@@ -1411,29 +1365,23 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                   MaterialPageRoute(builder: (context) => const AiInsightPage()),
                                 );
                               },
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                alignment: Alignment.center,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text('Insights', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ),
+                                  const SizedBox(height: 8),
                                   SizedBox(
                                     width: 300,
                                     height: 300,
                                     child: Image.asset('widgets/dashboard/computer.png', fit: BoxFit.contain),
                                   ),
-                                  if (_isHoveringComputer)
-                                    Positioned(
-                                      left: 80,
-                                      top: 290,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.95),
-                                          borderRadius: BorderRadius.circular(14),
-                                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3))],
-                                        ),
-                                        child: const Text('Insights', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                      ),
-                                    ),
                                 ],
                               ),
                             ),
@@ -1442,7 +1390,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
                         if (!_isLoading && _error == null)
                         for (int i = 0; i < _pockets.length; i++)
-                          _buildTreeItem(i, isDeleteTopLayer: false),
+                          _buildTreeItem(i),
 
                       if (!_isLoading && _error == null)
                         _buildWeatherLayer(weather)
@@ -1581,35 +1529,12 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
         
 
+          // Delete-mode dim overlay — purely visual, IgnorePointer so taps
+          // fall through to the InteractiveViewer trees below.
           if (_deleteMode)
             Positioned.fill(
-              child: Stack(
-                children: [
-                  GestureDetector(
-                    onTap: () => setState(() => _deleteMode = false),
-                    child: Container(color: Colors.black.withOpacity(0.25)), 
-                  ),
-                  
-                  ValueListenableBuilder<Matrix4>(
-                    valueListenable: _transformationController,
-                    builder: (context, matrix, child) {
-                      return Transform(
-                        transform: matrix,
-                        child: SizedBox(
-                          width: 1920,
-                          height: 1080,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              for (int i = 0; i < _pockets.length; i++)
-                                _buildTreeItem(i, isDeleteTopLayer: true),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+              child: IgnorePointer(
+                child: Container(color: Colors.black.withOpacity(0.30)),
               ),
             ),
         ],
