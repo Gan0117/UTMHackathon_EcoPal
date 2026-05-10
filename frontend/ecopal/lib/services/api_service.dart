@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 class ApiService {
   static bool isMockData = false;
@@ -403,4 +405,48 @@ class ApiService {
       throw Exception('Backend AI scan failed: ${response.statusCode}');
     }
   }
+
+  static String _getMimeType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  static Future<Map<String, dynamic>> scanReceiptWeb(String fileName, Uint8List bytes) async {
+    final session = Supabase.instance.client.auth.currentSession;
+    final token = session?.accessToken;
+    if (token == null) throw Exception('User not logged in');
+
+    final uri = Uri.parse('$baseUrl/ai/scan-receipt');
+    var request = http.MultipartRequest('POST', uri);
+    request.headers['Authorization'] = 'Bearer $token';
+
+    final multipartFile = http.MultipartFile.fromBytes(
+    'file',
+    bytes,
+    filename: fileName,
+    contentType: MediaType.parse(_getMimeType(fileName)),
+  );
+  request.files.add(multipartFile);
+
+    var streamedResponse = await request.send();
+    var response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      throw Exception('Backend AI scan failed: ${response.statusCode}');
+    }
+  }
 }
+
+

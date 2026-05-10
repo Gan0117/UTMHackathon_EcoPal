@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; 
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart'; 
 import '../services/api_service.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/floating_pet.dart';
+
 
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key});
@@ -192,23 +194,34 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     }
   }
 
-  Future<void> _handleScanReceipt() async {
-    try {
-      FilePickerResult? result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'], 
-      );
+ Future<void> _handleScanReceipt() async {
+  try {
+    FilePickerResult? result = await FilePicker.pickFiles(  // ← 删掉 .platform
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: true,
+    );
 
-      if (result != null && result.files.single.path != null) {
-        String fileName = result.files.single.name;
-        String filePath = result.files.single.path!; // Capture the actual file!
-        
-        _showScanningProgress(fileName, filePath); // Pass BOTH to the dialog
+    if (result != null) {
+      String fileName = result.files.single.name;
+      final bytes = result.files.single.bytes;
+
+      if (bytes != null) {
+        _showScanningProgressWeb(fileName, bytes);
+      } else if (result.files.single.path != null) {
+        _showScanningProgress(fileName, result.files.single.path!);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to read file. Please try again.')),
+        );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to pick file.')));
     }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Failed to pick file: $e')),
+    );
   }
+}
 
   Future<void> _showScanningProgress(String fileName, String filePath) async {
     showDialog(
@@ -232,18 +245,16 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     );
 
     try {
-      // 1. Send the file to your backend (Make sure to pass your actual file variable here!)
-      // If your file is stored in a variable like '_selectedFile', pass it in.
-      final extractedData = await ApiService.scanReceipt(filePath); 
+      final result = await ApiService.scanReceipt(filePath); 
+      final extractedData = result["scanned_data"]; // ← 解包这一层
 
       if (mounted) {
         Navigator.pop(context); // Close the loading dialog
         
-        // 2. Feed the REAL data from Gemini into the confirmation popup
         _showConfirmationDialog({
-          "category": extractedData["category"] ?? "Education", 
-          "amount": extractedData["amount"] ?? 0.0,
-          "description": "Extracted from: $fileName",
+          "category": extractedData["category"] ?? "Unknown", 
+          "amount": (extractedData["amount"] as num?)?.toDouble() ?? 0.0,
+          "description": extractedData["title"] ?? "Extracted from: $fileName",
           "created_at": DateTime.now().toIso8601String()
         });
       }
@@ -251,7 +262,51 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       if (mounted) {
         Navigator.pop(context); // Close the loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to analyze receipt with AI.')),
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showScanningProgressWeb(String fileName, Uint8List bytes) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white.withOpacity(0.9),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: primaryColor),
+              const SizedBox(height: 16),
+              const Text('Scanning Receipt...', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Analyzing $fileName...', style: TextStyle(color: Colors.grey.shade600, fontSize: 12), textAlign: TextAlign.center),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      final result = await ApiService.scanReceiptWeb(fileName, bytes);
+      final extractedData = result["scanned_data"];
+
+      if (mounted) {
+        Navigator.pop(context);
+        _showConfirmationDialog({
+          "category": extractedData["category"] ?? "Unknown",
+          "amount": (extractedData["amount"] as num?)?.toDouble() ?? 0.0,
+          "description": extractedData["title"] ?? "Extracted from: $fileName",
+          "created_at": DateTime.now().toIso8601String()
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to analyze receipt: $e')),
         );
       }
     }
