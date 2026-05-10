@@ -4,6 +4,10 @@ import 'dart:math' as math;
 import '../widgets/bottom_nav_bar.dart';
 import '../services/api_service.dart';
 import 'pet_room_page.dart';
+import 'profile_page.dart';
+import 'scanner_page.dart';
+import 'ai_insight_page.dart';
+import '../widgets/floating_pet.dart';
 
 class MoneyPocket {
   String id;
@@ -89,6 +93,10 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showFloatingPet.value = true;
+    });
     
     _animationController = AnimationController(
       vsync: this,
@@ -243,6 +251,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     if (_deleteMode) setState(() => _deleteMode = false);
   }
 
+  // 🔥 Goal 1 & 3: Delete and Release mode integrated via ApiService
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
     final pocket = _pockets[index];
     final String msg = isFromReleaseButton
@@ -303,21 +312,33 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             _loadData(); 
                             setState(() => _deleteMode = false);
                             
-                            // 🔥 Show Success Message on successful deletion / release
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  isFromReleaseButton 
-                                    ? 'Funds successfully released to main account!' 
-                                    : 'Plant successfully deleted and funds transferred!'
+                                content: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        isFromReleaseButton 
+                                          ? 'Funds successfully released to main account!' 
+                                          : '🌱 Plant removed. Funds returned to main account!',
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                                backgroundColor: const Color(0xFF2E7D32),
                                 behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                duration: const Duration(seconds: 3),
                               )
                             );
                           }
                         } catch (_) {
                           if (ctx.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
                           }
                         }
                       },
@@ -926,8 +947,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildTreeItem(int i, {required bool isDeleteTopLayer}) {
-    if (!isDeleteTopLayer && _deleteMode) return const SizedBox.shrink();
+  Widget _buildTreeItem(int i) {
 
     final pocket = _pockets[i];
     final treeSize = _getTreeSize(pocket.growthStage);
@@ -1062,10 +1082,10 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
       ),
       body: Stack(
         children: [
-          GestureDetector(
+          Positioned.fill(
+          child: GestureDetector(
             onTap: _onBackgroundTap,
-            child: Positioned.fill(
-              child: InteractiveViewer(
+            child: InteractiveViewer(
                 transformationController: _transformationController,
                 boundaryMargin: EdgeInsets.zero,
                 minScale: minScaleToFit,
@@ -1077,6 +1097,105 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   child: Stack(
                     children: [
                       Image.asset('widgets/dashboard/farm.gif', width: 1920, height: 1080, fit: BoxFit.cover),
+
+                      // 🌟 Pocket List 
+                    if (!_isLoading && _error == null && _pockets.isNotEmpty)
+                      Positioned(
+                        left: 50,
+                        top: 200,
+                        width: 280,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.white.withOpacity(0.2)),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (int i = 0; i < _pockets.length; i++) ...[
+                                    Builder(builder: (context) {
+                                      final pocket = _pockets[i];
+                                      final progress = pocket.targetAmount > 0
+                                          ? (pocket.currentBalance / pocket.targetAmount).clamp(0.0, 1.0)
+                                          : 0.0;
+                                      final isComplete = progress >= 1.0;
+                                      return ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: BackdropFilter(
+                                          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                          child: Container(
+                                            margin: const EdgeInsets.all(8),
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: isComplete ? Colors.green.withOpacity(0.15) : Colors.white.withOpacity(0.12),
+                                              borderRadius: BorderRadius.circular(14),
+                                              border: Border.all(
+                                                color: isComplete ? Colors.green.withOpacity(0.4) : Colors.white.withOpacity(0.2),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Image.asset(_treeImage(i, pocket.growthStage), width: 36, height: 36, fit: BoxFit.contain),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(pocket.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                                                    ),
+                                                    GestureDetector(
+                                                      onTap: () => _showEditPocketDialog(i),
+                                                      child: const Icon(Icons.edit, color: Colors.white70, size: 16),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text(_formatAmount(pocket.currentBalance),
+                                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                                                    Text('RM${pocket.targetAmount.toStringAsFixed(0)}',
+                                                        style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.7))),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 5),
+                                                ClipRRect(
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  child: LinearProgressIndicator(
+                                                    value: progress,
+                                                    minHeight: 6,
+                                                    backgroundColor: Colors.white.withOpacity(0.2),
+                                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                                      isComplete ? Colors.green : const Color(0xFFE5B94A),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  isComplete ? 'Done!' : '${(progress * 100).toStringAsFixed(0)}%',
+                                                  style: TextStyle(fontSize: 10, color: isComplete ? Colors.greenAccent : Colors.white70, fontWeight: FontWeight.w600),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
                       Positioned(
                         left: 1040, 
                         top: 870,   
@@ -1092,8 +1211,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           left: 1100, 
                           top: 840,   
                           child: MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringCat = true),
-                            onExit: (_) => setState(() => _isHoveringCat = false),
+                            cursor: SystemMouseCursors.click,
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent, 
                               onTap: () {
@@ -1114,25 +1232,156 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                     color: Colors.transparent, 
                                     child: Image.asset(_catHappyGif, fit: BoxFit.contain),
                                   ),
-                                  
-                                  if (_isHoveringCat)
-                                    Positioned(
-                                      left: 120, 
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.95),
-                                          borderRadius: BorderRadius.circular(14),
-                                          boxShadow: [
-                                            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                                          ],
-                                        ),
-                                        child: const Text(
-                                          'Feed it!',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
-                                        ),
-                                      ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // 🔥 Goal 2: Black box labels for the icons
+                      if (_petSpecies != null)
+                        Positioned(
+                          left: 1500,
+                          top: 560,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const PetRoomPage()),
+                                ).then((_) {
+                                  _loadData();
+                                });
+                              },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
+                                    child: const Text('Pet Room', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: 350,
+                                    height: 350,
+                                    child: Image.asset('widgets/dashboard/pet_house.png', fit: BoxFit.contain),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      Positioned(
+                        left: 1500,
+                        top: 160,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ProfilePage()),
+                              );
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Profile', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: 350,
+                                  height: 350,
+                                  child: Image.asset('widgets/dashboard/profile_shadow.png', fit: BoxFit.contain),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      if (_petSpecies != null)
+                      Positioned(
+                        left: 1280,
+                        top: 660,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ScannerPage()),
+                              );
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Scanner', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: 160,
+                                  height: 160,
+                                  child: Image.asset('widgets/dashboard/pet_book.png', fit: BoxFit.contain),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      if (_petSpecies != null)
+                        Positioned(
+                          left: 1200,
+                          top: 260,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const AiInsightPage()),
+                                );
+                              },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text('Insights', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: 300,
+                                    height: 300,
+                                    child: Image.asset('widgets/dashboard/computer.png', fit: BoxFit.contain),
+                                  ),
                                 ],
                               ),
                             ),
@@ -1141,7 +1390,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
                         if (!_isLoading && _error == null)
                         for (int i = 0; i < _pockets.length; i++)
-                          _buildTreeItem(i, isDeleteTopLayer: false),
+                          _buildTreeItem(i),
 
                       if (!_isLoading && _error == null)
                         _buildWeatherLayer(weather)
@@ -1151,6 +1400,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
               ),
             ),
           ),
+      
 
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
@@ -1237,6 +1487,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
               ),
             ),
 
+
           if (!_isLoading && _error == null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 20,
@@ -1276,35 +1527,14 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
               ),
             ),
 
+        
+
+          // Delete-mode dim overlay — purely visual, IgnorePointer so taps
+          // fall through to the InteractiveViewer trees below.
           if (_deleteMode)
             Positioned.fill(
-              child: Stack(
-                children: [
-                  GestureDetector(
-                    onTap: () => setState(() => _deleteMode = false),
-                    child: Container(color: Colors.black.withOpacity(0.25)), 
-                  ),
-                  
-                  ValueListenableBuilder<Matrix4>(
-                    valueListenable: _transformationController,
-                    builder: (context, matrix, child) {
-                      return Transform(
-                        transform: matrix,
-                        child: SizedBox(
-                          width: 1920,
-                          height: 1080,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              for (int i = 0; i < _pockets.length; i++)
-                                _buildTreeItem(i, isDeleteTopLayer: true),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+              child: IgnorePointer(
+                child: Container(color: Colors.black.withOpacity(0.30)),
               ),
             ),
         ],
