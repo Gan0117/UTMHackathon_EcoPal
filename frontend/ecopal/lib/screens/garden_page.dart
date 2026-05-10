@@ -182,9 +182,18 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
   String get _catHappyGif {
     if (_petSpecies == null) return '';
-    String folder1 = _petSpecies!.toLowerCase(); 
+
+    // 1. Force lowercase immediately so we never fail the check!
+    String safeSpecies = _petSpecies!.toLowerCase(); 
+    
+    String folder1 = safeSpecies; 
     String folder2 = _petLevel <= 3 ? 'kitten' : 'cat'; 
-    String prefix = _petSpecies == 'Tabby' ? (_petLevel <= 3 ? 'kit_' : 'cat_') : (_petLevel <= 3 ? 'orkt_' : 'org_');
+    
+    // 2. Use the safe, lowercase version to check for 'tabby'
+    String prefix = safeSpecies == 'tabby' 
+        ? (_petLevel <= 3 ? 'kit_' : 'cat_') 
+        : (_petLevel <= 3 ? 'orkt_' : 'org_');
+        
     return 'widgets/$folder1/$folder2/${prefix}happy.gif'; 
   }
 
