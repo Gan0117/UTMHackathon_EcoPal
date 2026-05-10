@@ -220,6 +220,15 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   double get _totalTarget => _pockets.fold(0, (sum, p) => sum + p.targetAmount);
   String get _currentWeather => _weatherState(_safeToSpend, _totalTarget);
 
+  /// Computes the growth stage based on current balance vs target amount.
+  /// Stage 3 = reached target, Stage 2 = over 50%, Stage 1 = below 50%.
+  int _computeGrowthStage(double currentBalance, double targetAmount) {
+    if (targetAmount <= 0) return 1;
+    if (currentBalance >= targetAmount) return 3;
+    if (currentBalance > targetAmount * 0.5) return 2;
+    return 1;
+  }
+
   String _formatAmount(double amount) {
     if (amount >= 1000) {
       return 'RM${(amount / 1000).toStringAsFixed(amount % 1000 == 0 ? 0 : 1)}K';
@@ -469,6 +478,205 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
+  void _showPartialReleaseDialog(MoneyPocket pocket, int index) {
+    final amountController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isReleasing = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: const Color(0xFFEDEDEF),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.payments_outlined, color: Color(0xFF4CAF50), size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Release Amount',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Pocket balance info card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFD0D0D3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Available in pocket', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                          Text(
+                            'RM${pocket.currentBalance.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Amount input
+                    _buildFieldLabel('Amount to Release'),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. 200.00',
+                        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                        prefixText: 'RM ',
+                        prefixStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w500),
+                        filled: true,
+                        fillColor: const Color(0xFFE2E2E5),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD0D0D3))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
+                        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Please enter an amount';
+                        final val = double.tryParse(v);
+                        if (val == null || val <= 0) return 'Enter a valid amount greater than 0';
+                        if (val > pocket.currentBalance) return 'Cannot exceed pocket balance (RM${pocket.currentBalance.toStringAsFixed(2)})';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'The amount will be moved to your Main Account.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, height: 1.4),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isReleasing ? null : () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              side: const BorderSide(color: Color(0xFFB0B0B3)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isReleasing
+                                ? null
+                                : () async {
+                                    if (!formKey.currentState!.validate()) return;
+                                    final amount = double.parse(amountController.text);
+                                    setDialogState(() => isReleasing = true);
+                                    try {
+                                      await ApiService.releasePartialPocket(pocket.id, amount);
+                                      // Update local state immediately — no full reload needed
+                                      final newBalance = pocket.currentBalance - amount;
+                                      final newStage = _computeGrowthStage(newBalance, pocket.targetAmount);
+                                      setState(() {
+                                        _pockets[index] = MoneyPocket(
+                                          id: pocket.id,
+                                          name: pocket.name,
+                                          targetAmount: pocket.targetAmount,
+                                          currentBalance: newBalance,
+                                          growthStage: newStage,
+                                          isLocked: newBalance >= pocket.targetAmount,
+                                          isAutoDeduct: pocket.isAutoDeduct,
+                                          autoDeductAmount: pocket.autoDeductAmount,
+                                        );
+                                        _safeToSpend += amount;
+                                      });
+                                      if (ctx.mounted) {
+                                        Navigator.pop(ctx);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    'RM${amount.toStringAsFixed(2)} released to Main Account!',
+                                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor: const Color(0xFF2E7D32),
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                            duration: const Duration(seconds: 3),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => isReleasing = false);
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Failed to release funds. Please try again.')),
+                                        );
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                            ),
+                            child: isReleasing
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _showMaxPocketsMessage() {
     showDialog(
       context: context,
@@ -581,20 +789,30 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             final isLocked = currentBal >= targetAmt;
 
                             final newPocket = MoneyPocket(
-                              id: 'p${DateTime.now().millisecondsSinceEpoch}',
+                              id: 'temp_${DateTime.now().millisecondsSinceEpoch}', // Temporary ID
                               name: nameController.text.trim(),
                               targetAmount: targetAmt,
                               currentBalance: currentBal,
-                              growthStage: 1,
+                              growthStage: _computeGrowthStage(currentBal, targetAmt),
                               isLocked: isLocked,
                               isAutoDeduct: false,
                               autoDeductAmount: 0.0,
                             );
+                            
                             try {
-                              await ApiService.createPocket(newPocket.toJson());
-                            } catch (_) {}
-                            setState(() => _pockets.add(newPocket));
-                            if (ctx.mounted) Navigator.pop(ctx);
+                              // Await the real UUID from the backend
+                              final realId = await ApiService.createPocket(newPocket.toJson());
+                              newPocket.id = realId; // Apply the real UUID to the local object
+                              
+                              setState(() => _pockets.add(newPocket));
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to create pocket.'))
+                                );
+                              }
+                            }
                           }
                         },
                         style: ElevatedButton.styleFrom(
@@ -715,7 +933,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                               name: nameController.text.trim(),
                               targetAmount: targetAmt,
                               currentBalance: currentBal,
-                              growthStage: pocket.growthStage,
+                              growthStage: _computeGrowthStage(currentBal, targetAmt),
                               isLocked: isLocked,
                               isAutoDeduct: isLocked ? false : pocket.isAutoDeduct,
                               autoDeductAmount: pocket.autoDeductAmount, 
@@ -996,6 +1214,24 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           child: const Text('Close', style: TextStyle(color: Color(0xFF888888))),
                         ),
                       ),
+                      if (pocket.currentBalance > 0) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showPartialReleaseDialog(pocket, index);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                            ),
+                            child: const Text('Release Amount', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
+                        ),
+                      ],
                       if (!pocket.isLocked) ...[
                         const SizedBox(width: 12),
                         Expanded(
@@ -1005,12 +1241,12 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                               _showEditPocketDialog(index);
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF4CAF50),
+                              backgroundColor: const Color(0xFFE2E2E5),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               elevation: 0,
                             ),
-                            child: const Text('Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            child: const Text('Add Money', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -1555,7 +1791,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Text(
-                                'SAFE TO SPEND',
+                                'Main Account',
                                 style: TextStyle(fontSize: 11, color: Colors.black54, letterSpacing: 1.8, fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 2),
