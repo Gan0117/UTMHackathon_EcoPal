@@ -183,13 +183,11 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   String get _catHappyGif {
     if (_petSpecies == null) return '';
 
-    // 1. Force lowercase immediately so we never fail the check!
     String safeSpecies = _petSpecies!.toLowerCase(); 
     
     String folder1 = safeSpecies; 
     String folder2 = _petLevel <= 3 ? 'kitten' : 'cat'; 
     
-    // 2. Use the safe, lowercase version to check for 'tabby'
     String prefix = safeSpecies == 'tabby' 
         ? (_petLevel <= 3 ? 'kit_' : 'cat_') 
         : (_petLevel <= 3 ? 'orkt_' : 'org_');
@@ -229,8 +227,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   double get _totalTarget => _pockets.fold(0, (sum, p) => sum + p.targetAmount);
   String get _currentWeather => _weatherState(_safeToSpend, _totalTarget);
 
-  /// Computes the growth stage based on current balance vs target amount.
-  /// Stage 3 = reached target, Stage 2 = over 50%, Stage 1 = below 50%.
   int _computeGrowthStage(double currentBalance, double targetAmount) {
     if (targetAmount <= 0) return 1;
     if (currentBalance >= targetAmount) return 3;
@@ -269,7 +265,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     if (_deleteMode) setState(() => _deleteMode = false);
   }
 
-  // --- 🔥 Goal 1 & 2: Safe To Spend Modifier via API Service ---
   void _showEditSafeToSpendDialog() {
     final amountController = TextEditingController(text: _safeToSpend.toStringAsFixed(2));
     bool isSaving = false;
@@ -379,7 +374,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
-  // --- Goal 1: Add Money to Main Account ---
   void _showAddMoneyDialog() {
     final amountController = TextEditingController();
     bool isSaving = false;
@@ -462,13 +456,11 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
                         setDialogState(() => isSaving = true);
                         try {
-                          // Fetch the latest balance from backend to avoid stale state
                           final latestBalance = await ApiService.getSafeToSpendBalance();
                           final newBalance = latestBalance + addedAmount;
 
                           await ApiService.updateProfile({'safe_to_spend_balance': newBalance});
 
-                          // Log as an income transaction so it appears in Recent Records
                           await ApiService.postTransaction({
                             'category': 'Add Money',
                             'amount': addedAmount,
@@ -529,110 +521,122 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
+  // 🔥 Goal 1: Added StatefulBuilder & isProcessing boolean to prevent redundant submissions
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
     final pocket = _pockets[index];
     final String msg = isFromReleaseButton
         ? 'Confirm to release ${pocket.name} money to main acc. This money pocket will be delete at the same time.'
         : 'After remove the money pocket, your money will move to your main account.';
     
+    bool isProcessing = false;
+
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: const Color(0xFFEDEDEF),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      barrierDismissible: false, 
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: const Color(0xFFEDEDEF),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(color: const Color(0xFFFFE0E0), borderRadius: BorderRadius.circular(10)),
-                    child: Icon(isFromReleaseButton ? Icons.payments_outlined : Icons.delete_outline, color: Colors.redAccent, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(isFromReleaseButton ? 'Release Funds' : 'Delete Plant', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(msg, style: const TextStyle(fontSize: 14, color: Colors.black54)),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        setState(() => _deleteMode = false);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        side: const BorderSide(color: Color(0xFFB0B0B3)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(color: const Color(0xFFFFE0E0), borderRadius: BorderRadius.circular(10)),
+                        child: Icon(isFromReleaseButton ? Icons.payments_outlined : Icons.delete_outline, color: Colors.redAccent, size: 20),
                       ),
-                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
-                    ),
+                      const SizedBox(width: 12),
+                      Text(isFromReleaseButton ? 'Release Funds' : 'Delete Plant', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        try {
-                          await ApiService.releasePocket(pocket.id, pocket.currentBalance);
-                          
-                          if (ctx.mounted) {
+                  const SizedBox(height: 16),
+                  Text(msg, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isProcessing ? null : () {
                             Navigator.pop(ctx);
-                            _loadData(); 
                             setState(() => _deleteMode = false);
-                            
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        isFromReleaseButton 
-                                          ? 'Funds successfully released to main account!' 
-                                          : '🌱 Plant removed. Funds returned to main account!',
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                backgroundColor: const Color(0xFF2E7D32),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                                duration: const Duration(seconds: 3),
-                              )
-                            );
-                          }
-                        } catch (_) {
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
+                          },
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            side: const BorderSide(color: Color(0xFFB0B0B3)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                        ),
                       ),
-                      child: const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isProcessing ? null : () async {
+                            setDialogState(() => isProcessing = true);
+                            try {
+                              await ApiService.releasePocket(pocket.id, pocket.currentBalance);
+                              
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                _loadData(); 
+                                setState(() => _deleteMode = false);
+                                
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            isFromReleaseButton 
+                                              ? 'Funds successfully released to main account!' 
+                                              : '🌱 Plant removed. Funds returned to main account!',
+                                            style: const TextStyle(fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: const Color(0xFF2E7D32),
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                    duration: const Duration(seconds: 3),
+                                  )
+                                );
+                              }
+                            } catch (_) {
+                              if (ctx.mounted) {
+                                setDialogState(() => isProcessing = false);
+                                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                          ),
+                          child: isProcessing 
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        }
       ),
     );
   }
@@ -658,7 +662,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Row(
                       children: [
                         Container(
@@ -681,7 +684,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                     ),
                     const SizedBox(height: 16),
 
-                    // Pocket balance info card
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -703,7 +705,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                     ),
                     const SizedBox(height: 16),
 
-                    // Amount input
                     _buildFieldLabel('Amount to Release'),
                     const SizedBox(height: 6),
                     TextFormField(
@@ -739,7 +740,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                     ),
                     const SizedBox(height: 24),
 
-                    // Buttons
                     Row(
                       children: [
                         Expanded(
@@ -764,7 +764,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                     setDialogState(() => isReleasing = true);
                                     try {
                                       await ApiService.releasePartialPocket(pocket.id, amount);
-                                      // Update local state immediately — no full reload needed
                                       final newBalance = pocket.currentBalance - amount;
                                       final newStage = _computeGrowthStage(newBalance, pocket.targetAmount);
                                       setState(() {
@@ -948,7 +947,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             final isLocked = currentBal >= targetAmt;
 
                             final newPocket = MoneyPocket(
-                              id: 'temp_${DateTime.now().millisecondsSinceEpoch}', // Temporary ID
+                              id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
                               name: nameController.text.trim(),
                               targetAmount: targetAmt,
                               currentBalance: currentBal,
@@ -959,16 +958,15 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             );
                             
                             try {
-                              // Await the real UUID from the backend
                               final realId = await ApiService.createPocket(newPocket.toJson());
-                              newPocket.id = realId; // Apply the real UUID to the local object
+                              newPocket.id = realId; 
                               
                               setState(() => _pockets.add(newPocket));
                               if (ctx.mounted) Navigator.pop(ctx);
                             } catch (e) {
                               if (ctx.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Failed to create pocket.'))
+                                  const SnackBar(content: Text('Failed to create pocket.'))
                                 );
                               }
                             }
@@ -1988,7 +1986,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           ),
                         ),
                         
-                        // 🔥 Goal 1: Add a discrete Edit Button to the top corner of the Safe to Spend Box
                         Positioned(
                           top: 10,
                           right: 12,
@@ -1998,7 +1995,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           ),
                         ),
 
-                        // 🔥 Goal 1: Add Money button on top-left of Main Account card
                         Positioned(
                           top: 10,
                           left: 12,

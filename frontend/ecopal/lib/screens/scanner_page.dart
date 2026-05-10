@@ -39,7 +39,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   final Color habitTaxGold = const Color(0xFFD4AF37);
   final Color alertDanger = const Color(0xFFEF4444);
 
-  // 🔥 Goal 1: Added 'Add Money' to categories to enable logging and filtering of income
   final List<String> _categories = ['Food', 'Groceries', 'Utilities', 'Entertainment', 'Transport', 'Add Money', 'Other'];
 
   @override
@@ -103,43 +102,58 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     }
   }
 
+  // 🔥 Goal 1: Added StatefulBuilder to prevent multiple clicks and redundant requests
   void _showConfirmationDialog(Map<String, dynamic> txData) {
     final isIncome = txData['type'] == 'income';
+    bool isSaving = false; 
     
     showDialog(
       context: context,
+      barrierDismissible: false, 
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white.withOpacity(0.95),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Confirm Details', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Record Type: ${isIncome ? 'Income (Add Money)' : 'Expense'}', style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 8),
-              Text('Category: ${txData['category']}', style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 8),
-              Text('Amount: \$${txData['amount'].toStringAsFixed(2)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isIncome ? secondaryColor : Colors.black87)),
-              const SizedBox(height: 8),
-              Text('Note: ${txData['description']}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel / Edit', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white),
-              onPressed: () {
-                Navigator.pop(context);
-                _submitToBackend(txData);
-              },
-              child: const Text('Save Record'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white.withOpacity(0.95),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text('Confirm Details', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Record Type: ${isIncome ? 'Income (Add Money)' : 'Expense'}', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Category: ${txData['category']}', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Amount: \$${txData['amount'].toStringAsFixed(2)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isIncome ? secondaryColor : Colors.black87)),
+                  const SizedBox(height: 8),
+                  Text('Note: ${txData['description']}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel / Edit', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white),
+                  onPressed: isSaving 
+                      ? null 
+                      : () async {
+                          // Prevent double clicks instantly
+                          setDialogState(() => isSaving = true);
+                          
+                          // Pop dialog and immediately trigger backend save
+                          Navigator.pop(context);
+                          await _submitToBackend(txData);
+                        },
+                  child: isSaving 
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Save Record'),
+                ),
+              ],
+            );
+          }
         );
       },
     );
@@ -181,7 +195,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       String finalCategory = _selectedCategory;
       String txType = 'expense';
       
-      // 🔥 Goal 1: Set type to income if 'Add Money' is selected
       if (_selectedCategory == 'Add Money') {
         txType = 'income';
       } else if (_selectedCategory == 'Other') {
@@ -266,7 +279,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
           "category": extractedData["category"] ?? "Unknown", 
           "amount": (extractedData["amount"] as num?)?.toDouble() ?? 0.0,
           "description": extractedData["title"] ?? "Extracted from: $fileName",
-          "type": "expense", // AI scanner assumes expenses
+          "type": "expense", 
           "created_at": DateTime.now().toIso8601String()
         });
       }
@@ -337,7 +350,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             
-            // 🔥 Goal 1: Filtering logic that captures 'Add Money' records correctly
             List<dynamic> filteredList = _transactions.where((tx) {
               bool isIncome = (tx['type'] ?? '') == 'income';
               
@@ -395,7 +407,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                         child: DropdownButtonFormField<String>(
                           value: filterCategory,
                           decoration: _inputDecoration(),
-                          // Adding 'Add Money' into the filter list explicitly (already inside _categories)
                           items: ['All', ..._categories].map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)))).toList(),
                           onChanged: (val) => setSheetState(() => filterCategory = val!),
                         ),
@@ -707,7 +718,8 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                                 foregroundColor: Colors.white,
                                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                               ),
-                                              onPressed: _verifyManualRecord, 
+                                              // 🔥 Goal 1: Block pressing if currently loading/submitting
+                                              onPressed: _isLoading ? null : _verifyManualRecord, 
                                               child: const Text('Record Transaction', style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                           )
