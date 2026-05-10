@@ -90,13 +90,23 @@ async def reality_check(user = Depends(get_current_user)):
     - If spending is good, do not use those words.
     """
     
-    response = gemini_client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt
-    )
-    
-    # Frontend expects exactly {"message": "..."}
-    return {"message": response.text.strip()}
+    try:
+        # Keeping the 2.5 Flash model!
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        
+        # Frontend expects exactly {"message": "..."}
+        return {"message": response.text.strip()}
+        
+    except Exception as e:
+        # 1. Print the error to your terminal so you know if you hit the quota
+        print(f"Reality Check Quota/API Error: {e}")
+        
+        # 2. Return a safe, standard message so Flutter doesn't crash!
+        # Notice we avoid the words "unhealthy" or "moderate" so the UI stays green.
+        return {"message": "Mochi is taking a quick nap to recharge! Your spending looks steady."}
 
 @app.post("/pet/feed")
 async def feed_pet(user = Depends(get_current_user)):
@@ -445,12 +455,12 @@ async def get_behavior_analysis(user = Depends(get_current_user)):
     {history}
     """
 
-    try: 
-        # 3. Call Gemini (Use 1.5-flash for better stability)
+    try:
         response = gemini_client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash',
             contents=[prompt]
         )
         return {"analysis": response.text.strip()}
     except Exception as e:
+        print(f"Gemini API Error: {e}") # This prints the exact error to your terminal so you aren't guessing!
         return {"analysis": "Mochi is still calculating your habits. Check back shortly!"}

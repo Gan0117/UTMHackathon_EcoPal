@@ -115,16 +115,29 @@ class _AiInsightPageState extends State<AiInsightPage> {
   }
 
   // --- Dynamic Chart Data Generator ---
+  // --- Dynamic Chart Data Generator ---
   List<FlSpot> _generateChartData() {
+    // 1. If no data, show a flat line at 0
     if (_transactions.isEmpty) return [const FlSpot(0, 0)];
 
-    if (_timeFilter == 'D') {
-      return const [FlSpot(1, 10), FlSpot(2, 40), FlSpot(3, 20), FlSpot(4, 50), FlSpot(5, 30), FlSpot(6, 80), FlSpot(7, 20)];
-    } else if (_timeFilter == 'Y') {
-      return const [FlSpot(1, 300), FlSpot(3, 400), FlSpot(6, 250), FlSpot(9, 600), FlSpot(12, 350)];
-    } else {
-      return const [FlSpot(1, 120), FlSpot(2, 180), FlSpot(3, 90), FlSpot(4, 250)];
+    List<FlSpot> spots = [];
+    
+    // 2. Take up to the 7 most recent transactions so the chart doesn't get squished
+    int limit = _transactions.length < 7 ? _transactions.length : 7;
+    
+    // 3. Backend sends newest first. Reverse it so the chart draws left-to-right (oldest to newest)
+    var displayTxs = _transactions.take(limit).toList().reversed.toList();
+
+    // 4. Plot the actual amounts!
+    for (int i = 0; i < displayTxs.length; i++) {
+      final tx = displayTxs[i];
+      double amount = (tx['amount'] ?? 0.0).toDouble();
+      
+      // X = index (1, 2, 3...), Y = actual transaction amount
+      spots.add(FlSpot((i + 1).toDouble(), amount));
     }
+
+    return spots;
   }
 
   @override
@@ -268,6 +281,7 @@ class _AiInsightPageState extends State<AiInsightPage> {
                                     bottomTitles: AxisTitles(
                                       sideTitles: SideTitles(
                                         showTitles: true,
+                                        interval: 1,
                                         getTitlesWidget: (value, meta) {
                                           return Padding(
                                             padding: const EdgeInsets.only(top: 8.0),

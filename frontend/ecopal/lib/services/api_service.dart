@@ -298,7 +298,8 @@ class ApiService {
     final token = _getAuthToken();
     final response = await http.get(Uri.parse('$baseUrl/ai/behavior'), headers: {'Authorization': 'Bearer $token'});
     if (response.statusCode == 200) {
-      return jsonDecode(response.body)['message'];
+      // 🔥 FIX: Swapped 'message' to 'analysis' to match Python!
+      return jsonDecode(response.body)['analysis'] ?? 'Mochi is still calculating...';
     }
     throw Exception('Backend error');
   }
