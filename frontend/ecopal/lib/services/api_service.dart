@@ -42,7 +42,7 @@ class ApiService {
   }
 
   // ===========================================================================
-  // 2. PROFILE DATA
+  // 2. PROFILE DATA ##Merged Fine
   // ===========================================================================
   static Future<Map<String, dynamic>> getProfile() async {
     if (isMockData) {
@@ -70,7 +70,7 @@ class ApiService {
   }
 
   // ===========================================================================
-  // 4. PET STATUS
+  // 4. PET STATUS ##Merged Fine
   // ===========================================================================
   static Future<Map<String, dynamic>> getPetStatus() async {
     if (isMockData) {
@@ -84,7 +84,7 @@ class ApiService {
   }
 
   // ===========================================================================
-  // 5. TRANSACTIONS
+  // 5. TRANSACTIONS ##Merged Fine 
   // ===========================================================================
   static Future<List<dynamic>> getTransactions() async {
     if (isMockData) {
@@ -113,7 +113,7 @@ class ApiService {
   }
 
   // ===========================================================================
-  // 6. UPDATE ACTIONS 
+  // 6. UPDATE ACTIONS ##PetStatus ##Profile Merged Fine
   // ===========================================================================
   static Future<void> updatePetStatus(Map<String, dynamic> data) async {
     if (isMockData) {
@@ -130,19 +130,39 @@ class ApiService {
     if (response.statusCode != 200) throw Exception('Backend error');
   }
 
-  static Future<void> updateProfile(Map<String, dynamic> data) async {
+static Future<void> updateProfile(Map<String, dynamic> data) async {
+    // 1. SAFEGUARD VALIDATION
+    if (data.containsKey('safe_to_spend_balance')) {
+      final balance = data['safe_to_spend_balance'];
+      
+      // Ensure it is a number and not negative
+      if (balance is! num) {
+        throw Exception('Validation Error: safe_to_spend_balance must be a number');
+      }
+      if (balance < 0) {
+        throw Exception('Validation Error: safe_to_spend_balance cannot be negative');
+      }
+    }
+
+    // 2. MOCK DATA HANDLING
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
+      // Note: Because mock data reads from a static JSON asset, this mock update 
+      // won't persist if you reload the app. The UI optimistic update handles the immediate visual change.
       return; 
     }
     
+    // 3. BACKEND REQUEST
     final token = _getAuthToken();
     final response = await http.post(
-      Uri.parse('$baseUrl/profile/update'),
+      Uri.parse('$baseUrl/profile/update'), // Note: Standard REST APIs often use HTTP PUT or PATCH for updates
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(data),
     );
-    if (response.statusCode != 200) throw Exception('Backend error');
+    
+    if (response.statusCode != 200) {
+      throw Exception('Backend error: ${response.statusCode}');
+    }
   }
 
   // ===========================================================================
@@ -340,7 +360,7 @@ class ApiService {
     if (token == null) throw Exception('User not logged in');
 
     // 2. Set up the URL (Make sure '/scan' matches your Python endpoint!)
-    final uri = Uri.parse('$baseUrl/scan');
+    final uri = Uri.parse('$baseUrl/ai/scan-receipt');
     
     // 3. Create a "Multipart" request because we are sending a file
     var request = http.MultipartRequest('POST', uri);

@@ -251,7 +251,116 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     if (_deleteMode) setState(() => _deleteMode = false);
   }
 
-  // 🔥 Goal 1 & 3: Delete and Release mode integrated via ApiService
+  // --- 🔥 Goal 1 & 2: Safe To Spend Modifier via API Service ---
+  void _showEditSafeToSpendDialog() {
+    final amountController = TextEditingController(text: _safeToSpend.toStringAsFixed(2));
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: const Color(0xFFEDEDEF),
+            title: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDDDDE0),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.edit, color: Color(0xFF4CAF50), size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Edit Safe to Spend', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Amount', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 1500.00',
+                    prefixText: 'RM ',
+                    filled: true,
+                    fillColor: const Color(0xFFE2E2E5),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: const BorderSide(color: Color(0xFFB0B0B3)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: isSaving ? null : () async {
+                        final val = double.tryParse(amountController.text);
+                        if (val == null || val < 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid amount.')));
+                          return;
+                        }
+                        
+                        setDialogState(() => isSaving = true);
+                        try {
+                          await ApiService.updateProfile({'safe_to_spend_balance': val});
+                          if (ctx.mounted) {
+                            setState(() {
+                              _safeToSpend = val;
+                            });
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Safe to Spend updated successfully!')));
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update balance.')));
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4CAF50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                      ),
+                      child: isSaving 
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
     final pocket = _pockets[index];
     final String msg = isFromReleaseButton
@@ -947,7 +1056,8 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildTreeItem(int i) {
+  Widget _buildTreeItem(int i, {required bool isDeleteTopLayer}) {
+    if (!isDeleteTopLayer && _deleteMode) return const SizedBox.shrink();
 
     final pocket = _pockets[i];
     final treeSize = _getTreeSize(pocket.growthStage);
@@ -1098,7 +1208,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                     children: [
                       Image.asset('widgets/dashboard/farm.gif', width: 1920, height: 1080, fit: BoxFit.cover),
 
-                      // 🌟 Pocket List 
                     if (!_isLoading && _error == null && _pockets.isNotEmpty)
                       Positioned(
                         left: 50,
@@ -1238,7 +1347,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           ),
                         ),
 
-                      // 🔥 Goal 2: Black box labels for the icons
                       if (_petSpecies != null)
                         Positioned(
                           left: 1500,
@@ -1390,7 +1498,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
                         if (!_isLoading && _error == null)
                         for (int i = 0; i < _pockets.length; i++)
-                          _buildTreeItem(i),
+                          _buildTreeItem(i, isDeleteTopLayer: false),
 
                       if (!_isLoading && _error == null)
                         _buildWeatherLayer(weather)
@@ -1431,56 +1539,70 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   borderRadius: BorderRadius.circular(20),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.75),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.4)),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'SAFE TO SPEND',
-                            style: TextStyle(fontSize: 11, color: Colors.black54, letterSpacing: 1.8, fontWeight: FontWeight.w700),
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.75),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.4)),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'RM${_safeToSpend.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.black87),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: weather == 'storm' ? Colors.red.withOpacity(0.12) : weather == 'overcast' ? Colors.orange.withOpacity(0.12) : Colors.green.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  weather == 'storm' ? '⛈️' : weather == 'overcast' ? '⛅' : '☀️',
-                                  style: const TextStyle(fontSize: 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'SAFE TO SPEND',
+                                style: TextStyle(fontSize: 11, color: Colors.black54, letterSpacing: 1.8, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'RM${_safeToSpend.toStringAsFixed(2)}',
+                                style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.black87),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: weather == 'storm' ? Colors.red.withOpacity(0.12) : weather == 'overcast' ? Colors.orange.withOpacity(0.12) : Colors.green.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  weather == 'storm' ? 'Storm' : weather == 'overcast' ? 'Overcast' : 'Sunny',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: weather == 'storm' ? Colors.red : weather == 'overcast' ? Colors.orange : const Color(0xFF2E7D32),
-                                  ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      weather == 'storm' ? '⛈️' : weather == 'overcast' ? '⛅' : '☀️',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      weather == 'storm' ? 'Storm' : weather == 'overcast' ? 'Overcast' : 'Sunny',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: weather == 'storm' ? Colors.red : weather == 'overcast' ? Colors.orange : const Color(0xFF2E7D32),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        
+                        // 🔥 Goal 1: Add a discrete Edit Button to the top corner of the Safe to Spend Box
+                        Positioned(
+                          top: 10,
+                          right: 12,
+                          child: GestureDetector(
+                            onTap: _showEditSafeToSpendDialog,
+                            child: const Icon(Icons.edit, size: 18, color: Colors.black54),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1527,14 +1649,35 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
               ),
             ),
 
-        
-
-          // Delete-mode dim overlay — purely visual, IgnorePointer so taps
-          // fall through to the InteractiveViewer trees below.
           if (_deleteMode)
             Positioned.fill(
-              child: IgnorePointer(
-                child: Container(color: Colors.black.withOpacity(0.30)),
+              child: Stack(
+                children: [
+                  GestureDetector(
+                    onTap: () => setState(() => _deleteMode = false),
+                    child: Container(color: Colors.black.withOpacity(0.25)), 
+                  ),
+                  
+                  ValueListenableBuilder<Matrix4>(
+                    valueListenable: _transformationController,
+                    builder: (context, matrix, child) {
+                      return Transform(
+                        transform: matrix,
+                        child: SizedBox(
+                          width: 1920,
+                          height: 1080,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              for (int i = 0; i < _pockets.length; i++)
+                                _buildTreeItem(i, isDeleteTopLayer: true),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
         ],
