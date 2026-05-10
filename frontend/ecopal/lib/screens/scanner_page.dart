@@ -39,7 +39,8 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   final Color habitTaxGold = const Color(0xFFD4AF37);
   final Color alertDanger = const Color(0xFFEF4444);
 
-  final List<String> _categories = ['Food', 'Groceries', 'Utilities', 'Entertainment', 'Transport', 'Other'];
+  // 🔥 Goal 1: Added 'Add Money' to categories to enable logging and filtering of income
+  final List<String> _categories = ['Food', 'Groceries', 'Utilities', 'Entertainment', 'Transport', 'Add Money', 'Other'];
 
   @override
   void initState() {
@@ -79,7 +80,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       final insight = await ApiService.getRealityCheck();
       if (mounted) {
         setState(() {
-          if (insight != null && insight.isNotEmpty) {
+          if (insight.isNotEmpty) {
             _latestComment = insight;
             _latestGrade = insight.toLowerCase().contains('unhealthy') ? 'Unhealthy' 
                          : insight.toLowerCase().contains('moderate') ? 'Moderate' 
@@ -103,6 +104,8 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   }
 
   void _showConfirmationDialog(Map<String, dynamic> txData) {
+    final isIncome = txData['type'] == 'income';
+    
     showDialog(
       context: context,
       builder: (context) {
@@ -114,9 +117,11 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Spend Type: ${txData['category']}', style: const TextStyle(fontSize: 16)),
+              Text('Record Type: ${isIncome ? 'Income (Add Money)' : 'Expense'}', style: const TextStyle(fontSize: 16)),
               const SizedBox(height: 8),
-              Text('Amount: \$${txData['amount'].toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text('Category: ${txData['category']}', style: const TextStyle(fontSize: 16)),
+              const SizedBox(height: 8),
+              Text('Amount: \$${txData['amount'].toStringAsFixed(2)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isIncome ? secondaryColor : Colors.black87)),
               const SizedBox(height: 8),
               Text('Note: ${txData['description']}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
             ],
@@ -161,11 +166,11 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       await _fetchAIAnalysis();
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record successfully saved to backend!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record successfully saved!')));
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save to backend.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save record.')));
     }
   }
 
@@ -174,7 +179,12 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     if (amount != null && amount > 0) {
       
       String finalCategory = _selectedCategory;
-      if (_selectedCategory == 'Other') {
+      String txType = 'expense';
+      
+      // 🔥 Goal 1: Set type to income if 'Add Money' is selected
+      if (_selectedCategory == 'Add Money') {
+        txType = 'income';
+      } else if (_selectedCategory == 'Other') {
         finalCategory = _customCategoryController.text.trim();
         if (finalCategory.isEmpty) {
           finalCategory = 'Other';
@@ -187,6 +197,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
         "category": finalCategory,
         "amount": amount,
         "description": finalDescription,
+        "type": txType,
         "created_at": DateTime.now().toIso8601String()
       });
     } else {
@@ -196,7 +207,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
 
  Future<void> _handleScanReceipt() async {
   try {
-    FilePickerResult? result = await FilePicker.pickFiles(  // ← 删掉 .platform
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
       withData: true,
@@ -246,21 +257,22 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
 
     try {
       final result = await ApiService.scanReceipt(filePath); 
-      final extractedData = result["scanned_data"]; // ← 解包这一层
+      final extractedData = result["scanned_data"];
 
       if (mounted) {
-        Navigator.pop(context); // Close the loading dialog
+        Navigator.pop(context); 
         
         _showConfirmationDialog({
           "category": extractedData["category"] ?? "Unknown", 
           "amount": (extractedData["amount"] as num?)?.toDouble() ?? 0.0,
           "description": extractedData["title"] ?? "Extracted from: $fileName",
+          "type": "expense", // AI scanner assumes expenses
           "created_at": DateTime.now().toIso8601String()
         });
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Close the loading dialog
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
@@ -299,6 +311,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
           "category": extractedData["category"] ?? "Unknown",
           "amount": (extractedData["amount"] as num?)?.toDouble() ?? 0.0,
           "description": extractedData["title"] ?? "Extracted from: $fileName",
+          "type": "expense",
           "created_at": DateTime.now().toIso8601String()
         });
       }
@@ -323,8 +336,20 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
 
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
+            
+            // 🔥 Goal 1: Filtering logic that captures 'Add Money' records correctly
             List<dynamic> filteredList = _transactions.where((tx) {
-              bool matchCat = filterCategory == 'All' || tx['category'] == filterCategory;
+              bool isIncome = (tx['type'] ?? '') == 'income';
+              
+              bool matchCat = false;
+              if (filterCategory == 'All') {
+                matchCat = true;
+              } else if (filterCategory == 'Add Money') {
+                matchCat = isIncome || tx['category'] == 'Add Money';
+              } else {
+                matchCat = tx['category'] == filterCategory;
+              }
+
               bool matchTime = true;
               DateTime txDate = DateTime.parse(tx['created_at']);
               DateTime now = DateTime.now();
@@ -370,6 +395,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                         child: DropdownButtonFormField<String>(
                           value: filterCategory,
                           decoration: _inputDecoration(),
+                          // Adding 'Add Money' into the filter list explicitly (already inside _categories)
                           items: ['All', ..._categories].map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)))).toList(),
                           onChanged: (val) => setSheetState(() => filterCategory = val!),
                         ),
@@ -387,8 +413,12 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                           itemBuilder: (context, index) {
                             final tx = filteredList[index];
                             final amount = (tx['amount'] ?? 0.0).toDouble();
+                            final bool isIncome = (tx['type'] ?? '') == 'income';
+
                             String txGrade = amount > 100 ? 'Unhealthy' : (amount > 50 ? 'Moderate' : 'Healthy');
-                            final style = _getGradeStyle(txGrade);
+                            final style = isIncome
+                                ? {'icon': Icons.add_circle, 'color': const Color(0xFF006C48), 'bg': const Color(0xFF92F7C3).withOpacity(0.3)}
+                                : _getGradeStyle(txGrade);
 
                             return GestureDetector(
                               onTap: () => _showTransactionDetails(tx),
@@ -397,7 +427,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: outlineVariant.withOpacity(0.5))),
                                 child: Row(
                                   children: [
-                                    // 🔥 Replaced Letter with Icon
                                     Container(
                                       width: 40, height: 40,
                                       decoration: BoxDecoration(color: style['bg'], borderRadius: BorderRadius.circular(8)),
@@ -413,7 +442,14 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                         ],
                                       ),
                                     ),
-                                    Text('\$${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Text(
+                                      isIncome ? '+\$${amount.toStringAsFixed(2)}' : '\$${amount.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: isIncome ? const Color(0xFF006C48) : Colors.black87,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -432,10 +468,17 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
 
   void _showTransactionDetails(Map<String, dynamic> tx) {
     final double amount = (tx['amount'] ?? 0.0).toDouble();
+    final bool isIncome = (tx['type'] ?? '') == 'income';
+    
     String grade = 'Healthy';
-    if (amount > 100) grade = 'Unhealthy';
-    else if (amount > 50) grade = 'Moderate';
-    final style = _getGradeStyle(grade);
+    if (!isIncome) {
+      if (amount > 100) grade = 'Unhealthy';
+      else if (amount > 50) grade = 'Moderate';
+    }
+    
+    final style = isIncome
+        ? {'icon': Icons.add_circle, 'color': const Color(0xFF006C48), 'bg': const Color(0xFF92F7C3).withOpacity(0.3)}
+        : _getGradeStyle(grade);
 
     showModalBottomSheet(
       context: context,
@@ -456,7 +499,14 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(tx['category'] ?? 'Unknown', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                  Text('\$${amount.toStringAsFixed(2)}', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryColor)),
+                  Text(
+                    isIncome ? '+\$${amount.toStringAsFixed(2)}' : '\$${amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: isIncome ? const Color(0xFF006C48) : primaryColor,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -481,10 +531,18 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(color: style['bg'], borderRadius: BorderRadius.circular(100)),
-                      child: Text(grade.toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: style['color'])),
+                      child: Text(
+                        isIncome ? 'INCOME' : grade.toUpperCase(),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: style['color']),
+                      ),
                     ),
                     const SizedBox(width: 12),
-                    Expanded(child: Text('This transaction was logged as $grade for your current spending cycle.', style: const TextStyle(fontSize: 12))),
+                    Expanded(child: Text(
+                      isIncome
+                          ? 'This is an income entry added to your Main Account.'
+                          : 'This transaction was logged as $grade for your current spending cycle.',
+                      style: const TextStyle(fontSize: 12),
+                    )),
                   ],
                 ),
               ),
@@ -504,7 +562,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     );
   }
 
-  // 🔥 Swapped the 'letter' parameter for an 'icon' parameter
   Map<String, dynamic> _getGradeStyle(String grade) {
     if (grade == 'Healthy') return {'icon': Icons.eco, 'color': secondaryColor, 'bg': const Color(0xFF92F7C3).withOpacity(0.3)};
     if (grade == 'Moderate') return {'icon': Icons.balance, 'color': habitTaxGold, 'bg': habitTaxGold.withOpacity(0.2)};
@@ -651,7 +708,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                               ),
                                               onPressed: _verifyManualRecord, 
-                                              child: const Text('Record Spending', style: TextStyle(fontWeight: FontWeight.bold)),
+                                              child: const Text('Record Transaction', style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                           )
                                         ],
@@ -707,7 +764,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        // 🔥 Replaced Letter with Icon
                                         Icon(gradeStyle['icon'], size: 32, color: gradeStyle['color']),
                                         const SizedBox(height: 4),
                                         Text(_latestGrade.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: gradeStyle['color'], letterSpacing: 0.5)),
@@ -756,8 +812,12 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                             itemBuilder: (context, index) {
                               final tx = _transactions[index];
                               final amount = (tx['amount'] ?? 0.0).toDouble();
+                              final bool isIncome = (tx['type'] ?? '') == 'income';
+
                               String txGrade = amount > 100 ? 'Unhealthy' : (amount > 50 ? 'Moderate' : 'Healthy');
-                              final style = _getGradeStyle(txGrade);
+                              final style = isIncome
+                                  ? {'icon': Icons.add_circle, 'color': const Color(0xFF006C48), 'bg': const Color(0xFF92F7C3).withOpacity(0.3)}
+                                  : _getGradeStyle(txGrade);
 
                               return GestureDetector(
                                 onTap: () => _showTransactionDetails(tx), 
@@ -766,7 +826,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), borderRadius: BorderRadius.circular(16), border: Border.all(color: outlineVariant.withOpacity(0.5))),
                                   child: Row(
                                     children: [
-                                      // 🔥 Replaced Letter with Icon
                                       Container(
                                         width: 40, height: 40,
                                         decoration: BoxDecoration(color: style['bg'], borderRadius: BorderRadius.circular(8)),
@@ -785,13 +844,27 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.end,
                                         children: [
-                                          Text('\$${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                          Text(
+                                            isIncome ? '+\$${amount.toStringAsFixed(2)}' : '\$${amount.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: isIncome ? const Color(0xFF006C48) : Colors.black87,
+                                            ),
+                                          ),
                                           const SizedBox(height: 4),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(color: style['bg'], borderRadius: BorderRadius.circular(100)),
-                                            child: Text(txGrade.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: style['color'])),
-                                          )
+                                          if (!isIncome)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(color: style['bg'], borderRadius: BorderRadius.circular(100)),
+                                              child: Text(txGrade.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: style['color'])),
+                                            )
+                                          else
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(color: const Color(0xFF92F7C3).withOpacity(0.3), borderRadius: BorderRadius.circular(100)),
+                                              child: Text('INCOME', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: secondaryColor)),
+                                            ),
                                         ],
                                       ),
                                     ],

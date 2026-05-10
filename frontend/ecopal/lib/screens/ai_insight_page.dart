@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'package:fl_chart/fl_chart.dart'; // Chart Package
+import 'package:fl_chart/fl_chart.dart'; 
 import '../services/api_service.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/floating_pet.dart';
@@ -22,9 +22,9 @@ class _AiInsightPageState extends State<AiInsightPage> {
   // AI Insights States
   String _realityCheckMsg = 'Loading prediction...';
   String _behaviorMsg = 'Analyzing recent spending...';
-  String _grade = 'Healthy'; // 'Healthy', 'Moderate', 'Unhealthy'
+  String _grade = 'Healthy'; 
   
-  // 🔥 Goal 2: Habit Tax States populated from API Service
+  // Habit Tax States
   String _habitTaxId = '';
   double _habitTaxAmount = 0.0;
   bool _isHabitTaxEnabled = false;
@@ -50,13 +50,12 @@ class _AiInsightPageState extends State<AiInsightPage> {
 
   Future<void> _loadAllData() async {
     try {
-      // 1. Fetch all data simultaneously from backend
       final results = await Future.wait([
         ApiService.getSafeToSpendBalance(),
         ApiService.getTransactions(),
         ApiService.getRealityCheck(),
         ApiService.getBehaviorAnalysis(),
-        ApiService.getHabitTax(), // Fetches dynamic habit tax data
+        ApiService.getHabitTax(), 
       ]);
 
       if (mounted) {
@@ -66,13 +65,11 @@ class _AiInsightPageState extends State<AiInsightPage> {
           _realityCheckMsg = results[2] as String;
           _behaviorMsg = results[3] as String;
           
-          // 🔥 Goal 2: Store real API data into state variables
           final habitTaxData = results[4] as Map<String, dynamic>;
           _habitTaxId = habitTaxData['id'] ?? '';
           _habitTaxAmount = (habitTaxData['amount'] ?? 0.0).toDouble();
           _isHabitTaxEnabled = habitTaxData['available'] ?? false;
 
-          // 2. Determine grade based on AI Reality Check response
           String lowerMsg = _realityCheckMsg.toLowerCase();
           if (lowerMsg.contains('unhealthy') || lowerMsg.contains('debt') || lowerMsg.contains('warning')) {
             _grade = 'Unhealthy';
@@ -93,50 +90,93 @@ class _AiInsightPageState extends State<AiInsightPage> {
     }
   }
 
-  // --- Habit Tax Toggle Logic ---
   Future<void> _toggleHabitTax(bool newValue) async {
-    // Optimistic UI Update
     setState(() => _isHabitTaxEnabled = newValue);
     try {
-      // Send data to backend
       await ApiService.updateHabitTax(newValue);
     } catch (e) {
-      // Revert if backend fails
       setState(() => _isHabitTaxEnabled = !newValue);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update Habit Tax settings.')));
     }
   }
 
-  // --- Dynamic UI Helper for Grades ---
   Map<String, dynamic> _getGradeStyle() {
     if (_grade == 'Healthy') return {'icon': Icons.eco, 'color': secondaryColor, 'bg': const Color(0xFF92F7C3).withOpacity(0.3), 'text': 'HEALTHY'};
     if (_grade == 'Moderate') return {'icon': Icons.balance, 'color': habitTaxGold, 'bg': habitTaxGold.withOpacity(0.2), 'text': 'MODERATE'};
     return {'icon': Icons.warning_amber_rounded, 'color': alertDanger, 'bg': alertDanger.withOpacity(0.2), 'text': 'UNHEALTHY'};
   }
 
-  // --- Dynamic Chart Data Generator ---
-  // --- Dynamic Chart Data Generator ---
+  // --- 🔥 Goal 1: Dynamic Chart Data Generator based on Time Filter ---
   List<FlSpot> _generateChartData() {
-    // 1. If no data, show a flat line at 0
-    if (_transactions.isEmpty) return [const FlSpot(0, 0)];
+    if (_transactions.isEmpty) return [const FlSpot(0, 0), const FlSpot(1, 0)];
 
-    List<FlSpot> spots = [];
-    
-    // 2. Take up to the 7 most recent transactions so the chart doesn't get squished
-    int limit = _transactions.length < 7 ? _transactions.length : 7;
-    
-    // 3. Backend sends newest first. Reverse it so the chart draws left-to-right (oldest to newest)
-    var displayTxs = _transactions.take(limit).toList().reversed.toList();
+    // Filter to expenses only for spending trends
+    final expenses = _transactions.where((tx) {
+      final type = tx['type']?.toString().toLowerCase();
+      return type == 'expense' || type == null;
+    }).toList();
 
-    // 4. Plot the actual amounts!
-    for (int i = 0; i < displayTxs.length; i++) {
-      final tx = displayTxs[i];
-      double amount = (tx['amount'] ?? 0.0).toDouble();
+    Map<int, double> groupedData = {};
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (_timeFilter == 'D') {
+      // Last 7 days
+      for (int i = 0; i < 7; i++) groupedData[i] = 0.0;
       
-      // X = index (1, 2, 3...), Y = actual transaction amount
-      spots.add(FlSpot((i + 1).toDouble(), amount));
+      for (var tx in expenses) {
+        String? dateStr = tx['created_at'] ?? tx['date'];
+        if (dateStr != null) {
+          DateTime date = DateTime.parse(dateStr).toLocal();
+          DateTime txDay = DateTime(date.year, date.month, date.day);
+          int diff = today.difference(txDay).inDays;
+          
+          if (diff >= 0 && diff < 7) {
+            int index = 6 - diff; // 6 is today, 0 is 6 days ago
+            groupedData[index] = (groupedData[index] ?? 0) + (tx['amount'] as num).toDouble();
+          }
+        }
+      }
+    } else if (_timeFilter == 'M') {
+      // Last 6 months
+      for (int i = 0; i < 6; i++) groupedData[i] = 0.0;
+
+      for (var tx in expenses) {
+        String? dateStr = tx['created_at'] ?? tx['date'];
+        if (dateStr != null) {
+          DateTime date = DateTime.parse(dateStr).toLocal();
+          int monthDiff = (now.year - date.year) * 12 + now.month - date.month;
+          
+          if (monthDiff >= 0 && monthDiff < 6) {
+            int index = 5 - monthDiff; // 5 is current month, 0 is 5 months ago
+            groupedData[index] = (groupedData[index] ?? 0) + (tx['amount'] as num).toDouble();
+          }
+        }
+      }
+    } else if (_timeFilter == 'Y') {
+      // Last 4 years
+      for (int i = 0; i < 4; i++) groupedData[i] = 0.0;
+
+      for (var tx in expenses) {
+        String? dateStr = tx['created_at'] ?? tx['date'];
+        if (dateStr != null) {
+          DateTime date = DateTime.parse(dateStr).toLocal();
+          int yearDiff = now.year - date.year;
+          
+          if (yearDiff >= 0 && yearDiff < 4) {
+            int index = 3 - yearDiff; // 3 is current year, 0 is 3 years ago
+            groupedData[index] = (groupedData[index] ?? 0) + (tx['amount'] as num).toDouble();
+          }
+        }
+      }
     }
 
+    List<FlSpot> spots = [];
+    groupedData.forEach((key, value) {
+      spots.add(FlSpot(key.toDouble(), value));
+    });
+    
+    spots.sort((a, b) => a.x.compareTo(b.x));
     return spots;
   }
 
@@ -147,12 +187,11 @@ class _AiInsightPageState extends State<AiInsightPage> {
 
     return Scaffold(
       extendBody: true,
-      bottomNavigationBar: const EcoPalBottomBar(currentIndex: 3), // Index 3 for Insights
+      bottomNavigationBar: const EcoPalBottomBar(currentIndex: 3), 
       body: _isLoading
         ? Center(child: CircularProgressIndicator(color: primaryColor))
         : Stack(
             children: [
-              // Background GIF
               Container(
                 width: double.infinity,
                 height: double.infinity,
@@ -170,7 +209,6 @@ class _AiInsightPageState extends State<AiInsightPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header
                       const Text('AI Insights', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.black87)),
                       const SizedBox(height: 4),
                       Text('Your personal financial ecosystem analysis.', style: TextStyle(fontSize: 16, color: Colors.grey.shade800)),
@@ -217,7 +255,6 @@ class _AiInsightPageState extends State<AiInsightPage> {
                             ),
                             const SizedBox(height: 24),
 
-                            // Grade & Suggestion
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -267,13 +304,15 @@ class _AiInsightPageState extends State<AiInsightPage> {
                             ),
                             const SizedBox(height: 32),
 
-                            // Line Chart using fl_chart
                             Text('Total Spending vs Time', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
                             const SizedBox(height: 16),
                             SizedBox(
                               height: 180,
                               child: LineChart(
                                 LineChartData(
+                                  minY: 0,
+                                  minX: 0,
+                                  maxX: _timeFilter == 'D' ? 6 : (_timeFilter == 'M' ? 5 : 3),
                                   gridData: FlGridData(show: false),
                                   titlesData: FlTitlesData(
                                     rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -283,9 +322,35 @@ class _AiInsightPageState extends State<AiInsightPage> {
                                         showTitles: true,
                                         interval: 1,
                                         getTitlesWidget: (value, meta) {
+                                          int index = value.toInt();
+                                          String text = '';
+                                          final now = DateTime.now();
+
+                                          if (_timeFilter == 'D') {
+                                            if (index >= 0 && index <= 6) {
+                                              int daysAgo = 6 - index;
+                                              DateTime d = now.subtract(Duration(days: daysAgo));
+                                              text = '${d.day}/${d.month}';
+                                            }
+                                          } else if (_timeFilter == 'M') {
+                                            if (index >= 0 && index <= 5) {
+                                              int monthsAgo = 5 - index;
+                                              int targetMonth = now.month - monthsAgo;
+                                              while (targetMonth <= 0) targetMonth += 12; // Handle year wrap
+                                              
+                                              List<String> months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                              text = months[targetMonth - 1];
+                                            }
+                                          } else if (_timeFilter == 'Y') {
+                                            if (index >= 0 && index <= 3) {
+                                              int yearsAgo = 3 - index;
+                                              text = '${now.year - yearsAgo}';
+                                            }
+                                          }
+
                                           return Padding(
                                             padding: const EdgeInsets.only(top: 8.0),
-                                            child: Text('T${value.toInt()}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                            child: Text(text, style: const TextStyle(fontSize: 10, color: Colors.grey)),
                                           );
                                         },
                                       ),
@@ -295,11 +360,11 @@ class _AiInsightPageState extends State<AiInsightPage> {
                                   lineBarsData: [
                                     LineChartBarData(
                                       spots: _generateChartData(),
-                                      isCurved: false, // 🔥 Goal 1: Set to false to create a non-curved line chart
+                                      isCurved: false, 
                                       color: secondaryColor,
                                       barWidth: 3,
                                       isStrokeCapRound: true,
-                                      dotData: FlDotData(show: true), // Shows points on the straight edges for better visibility
+                                      dotData: FlDotData(show: true), 
                                       belowBarData: BarAreaData(
                                         show: true,
                                         color: secondaryColor.withOpacity(0.2),
@@ -431,7 +496,6 @@ class _AiInsightPageState extends State<AiInsightPage> {
                                         Text('Auto-saves RM1 per entertainment spend into a locked "Habit Tabung".', style: TextStyle(fontSize: 13, color: Colors.grey.shade800)),
                                         const SizedBox(height: 24),
                                         
-                                        // 🔥 Goal 2: Bound to dynamic variables pulled from the ApiService
                                         Container(
                                           width: double.infinity,
                                           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -446,7 +510,6 @@ class _AiInsightPageState extends State<AiInsightPage> {
                                         ),
                                         const SizedBox(height: 16),
 
-                                        // Lock / Unlock Logic based on Grade
                                         Container(
                                           padding: const EdgeInsets.all(12),
                                           decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(12)),
@@ -466,7 +529,6 @@ class _AiInsightPageState extends State<AiInsightPage> {
                                           ),
                                         ),
 
-                                        // Withdrawal Button
                                         if (isHabitUnlocked) ...[
                                           const SizedBox(height: 16),
                                           SizedBox(
@@ -502,7 +564,6 @@ class _AiInsightPageState extends State<AiInsightPage> {
     );
   }
 
-  // --- UI Helper ---
   Widget _buildGlassCard({required Widget child, EdgeInsetsGeometry padding = const EdgeInsets.all(24)}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),

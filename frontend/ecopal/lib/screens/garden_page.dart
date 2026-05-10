@@ -379,6 +379,156 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
+  // --- Goal 1: Add Money to Main Account ---
+  void _showAddMoneyDialog() {
+    final amountController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: const Color(0xFFEDEDEF),
+            title: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDDDDE0),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.add_circle_outline, color: Color(0xFF4CAF50), size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Add Money', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Current balance: RM${_safeToSpend.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                const SizedBox(height: 14),
+                const Text('Amount to Add', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: amountController,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 500.00',
+                    prefixText: 'RM ',
+                    filled: true,
+                    fillColor: const Color(0xFFE2E2E5),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: const BorderSide(color: Color(0xFFB0B0B3)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: isSaving ? null : () async {
+                        final addedAmount = double.tryParse(amountController.text);
+                        if (addedAmount == null || addedAmount <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Enter a valid amount greater than 0.')),
+                          );
+                          return;
+                        }
+
+                        setDialogState(() => isSaving = true);
+                        try {
+                          // Fetch the latest balance from backend to avoid stale state
+                          final latestBalance = await ApiService.getSafeToSpendBalance();
+                          final newBalance = latestBalance + addedAmount;
+
+                          await ApiService.updateProfile({'safe_to_spend_balance': newBalance});
+
+                          // Log as an income transaction so it appears in Recent Records
+                          await ApiService.postTransaction({
+                            'category': 'Add Money',
+                            'amount': addedAmount,
+                            'description': 'Added to Main Account',
+                            'type': 'income',
+                            'created_at': DateTime.now().toIso8601String(),
+                          });
+
+                          if (ctx.mounted) {
+                            setState(() => _safeToSpend = newBalance);
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'RM${addedAmount.toStringAsFixed(2)} added to Main Account!',
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: const Color(0xFF2E7D32),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                duration: const Duration(seconds: 3),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Failed to add money. Please try again.')),
+                            );
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4CAF50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                      ),
+                      child: isSaving
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
     final pocket = _pockets[index];
     final String msg = isFromReleaseButton
@@ -1845,6 +1995,16 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           child: GestureDetector(
                             onTap: _showEditSafeToSpendDialog,
                             child: const Icon(Icons.edit, size: 18, color: Colors.black54),
+                          ),
+                        ),
+
+                        // 🔥 Goal 1: Add Money button on top-left of Main Account card
+                        Positioned(
+                          top: 10,
+                          left: 12,
+                          child: GestureDetector(
+                            onTap: _showAddMoneyDialog,
+                            child: const Icon(Icons.add_circle_outline, size: 18, color: Color(0xFF4CAF50)),
                           ),
                         ),
                       ],
