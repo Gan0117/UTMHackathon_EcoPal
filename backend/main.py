@@ -225,7 +225,7 @@ async def log_transaction(req: TransactionRequest, user = Depends(get_current_us
         
     supabase.table("transactions").insert(tx_data).execute()
 
-    # 2. Habit Tabung (Flat RM 1.00)
+    # 2. Habit Tabung (Flat RM 1.00 Penalty)
     guilty_categories = ["Entertainment", "Shopping", "Guilty Pleasure"]
     
     if req.category in guilty_categories and req.type == "expense":
@@ -234,10 +234,25 @@ async def log_transaction(req: TransactionRequest, user = Depends(get_current_us
         
         if tax_res.data:
             current_amount = tax_res.data[0]["amount"]
-            # Add RM 1.00
             supabase.table("habit_tax").update({"amount": current_amount + 1.00}).eq("user_id", user_id).execute()
 
-    return {"message": "Transaction logged successfully!"}
+    # 3. 🔥 THE NEW REWARD SYSTEM: Earn Treats for Healthy Spending!
+    profile_res = supabase.table("profiles").select("reward_points").eq("id", user_id).execute()
+    if profile_res.data:
+        current_points = profile_res.data[0]["reward_points"]
+        
+        # Determine the reward based on the category
+        if req.category in guilty_categories:
+            earned_points = 0  # Unhealthy: No treats for Mochi!
+        elif req.category in ["Food", "Groceries", "Utilities", "Bills"]:
+            earned_points = 15 # Healthy Essential: +15 Treats!
+        else:
+            earned_points = 5  # Moderate/Other: +5 Treats!
+            
+        # Save the new points to the database
+        supabase.table("profiles").update({"reward_points": current_points + earned_points}).eq("id", user_id).execute()
+
+    return {"message": f"Transaction logged! You earned {earned_points} Treats for Mochi!"}
 
 @app.post("/ai/scan-receipt")
 async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_user)):
