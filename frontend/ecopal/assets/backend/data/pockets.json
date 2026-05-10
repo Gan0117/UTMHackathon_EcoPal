@@ -1,0 +1,49 @@
+[
+  {
+    "id": "p1",
+    "name": "Emergency Fund",
+    "target_amount": 5000.00,
+    "current_balance": 2000.00,
+    "growth_stage": 2,
+    "is_locked": false,
+    "deduction": 50.00
+  },
+  {
+    "id": "p2",
+    "name": "Graduation Trip",
+    "target_amount": 3000.00,
+    "current_balance": 3000.00,
+    "growth_stage": 3,
+    "is_locked": true,
+    "deduction": 0.00
+  },
+  {
+    "id": "p3",
+    "name": "Habit Tax (Locked)",
+    "target_amount": 500.00,
+    "current_balance": 80.00,
+    "growth_stage": 1,
+    "is_locked": false,
+    "deduction": 50.00
+  },
+
+  {
+    "id": "p4",
+    "name": "Entertainment Fund (Locked)",
+    "target_amount": 500.00,
+    "current_balance": 500.00,
+    "growth_stage": 3,
+    "is_locked": true,
+    "deduction": 0.00
+  },
+
+  {
+    "id": "p5",
+    "name": "Eat",
+    "target_amount": 500.00,
+    "current_balance": 460.00,
+    "growth_stage": 3,
+    "is_locked": false,
+    "deduction": 50.00
+  }
+]

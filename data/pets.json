@@ -1,9 +1,0 @@
-{
-  "id": "pet-001",
-  "name": "Mochi",
-  "species": "Pixel Cat",
-  "level": 1,
-  "hunger_level": 80,
-  "happiness_level": 95,
-  "last_interaction": "2026-05-05T14:20:00Z"
-}
