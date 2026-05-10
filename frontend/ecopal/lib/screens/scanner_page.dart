@@ -102,7 +102,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     }
   }
 
-  // 🔥 Goal 1: Added StatefulBuilder to prevent multiple clicks and redundant requests
   void _showConfirmationDialog(Map<String, dynamic> txData) {
     final isIncome = txData['type'] == 'income';
     bool isSaving = false; 
@@ -140,10 +139,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                   onPressed: isSaving 
                       ? null 
                       : () async {
-                          // Prevent double clicks instantly
                           setDialogState(() => isSaving = true);
-                          
-                          // Pop dialog and immediately trigger backend save
                           Navigator.pop(context);
                           await _submitToBackend(txData);
                         },
@@ -159,33 +155,94 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     );
   }
 
+  // 🔥 Goal 1: Compute points locally and update Profile via API
   Future<void> _submitToBackend(Map<String, dynamic> txData) async {
     setState(() => _isLoading = true);
+    
+    // 1. Calculate Reward Points locally
+    int pointsEarned = 0;
+    final category = txData['category']?.toString().toLowerCase() ?? '';
+    if (category  == 'food' || category == 'groceries' || category == 'utilities' || category == 'bills' || category == 'transport') {
+      pointsEarned = 15;
+    } else if (category == 'other'){
+      pointsEarned = 5;
+    } else if (category == 'add money') {
+      pointsEarned = 20;
+    } else {
+      pointsEarned = 0;
+    }
+    
     try {
-      await ApiService.postTransaction(txData); 
+      // 2. Post the Transaction 
+      await ApiService.postTransaction(txData);
       
-      setState(() {
-        _transactions.insert(0, {
-          "id": "tx-${DateTime.now().millisecondsSinceEpoch}",
-          ...txData,
-        });
-        
-        _amountController.clear();
-        _timeController.clear();
-        _customCategoryController.clear();
-        _descriptionController.clear();
-        _isManualExpanded = false;
-      });
-      
-      await _fetchAIAnalysis();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record successfully saved!')));
+      // 3. Update Profile Reward Points if points were earned
+      if (pointsEarned > 0) {
+        final profile = await ApiService.getProfile();
+        final currentPoints = (profile['reward_points'] as num?)?.toInt() ?? 0;
+        await ApiService.updateProfile({'reward_points': currentPoints + pointsEarned});
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save record.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save transaction.')));
+      return;
     }
+
+    // 4. Update the UI
+    setState(() {
+      _transactions.insert(0, {
+        "id": "tx-${DateTime.now().millisecondsSinceEpoch}",
+        ...txData,
+      });
+      
+      _amountController.clear();
+      _timeController.clear();
+      _customCategoryController.clear();
+      _descriptionController.clear();
+      _isManualExpanded = false;
+    });
+    
+    await _fetchAIAnalysis();
+    
+    if (mounted) {
+      _showRewardSnackBar(pointsEarned);
+      if (pointsEarned > 0) {
+        // Trigger pet celebration
+        rewardPointsEarnedNotifier.value = 0; 
+        rewardPointsEarnedNotifier.value = pointsEarned;
+      }
+    }
+  }
+
+  void _showRewardSnackBar(int points) {
+    final bool hasPoints = points > 0;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              hasPoints ? Icons.stars_rounded : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                hasPoints
+                    ? 'Record saved!  +$points reward points earned ✨'
+                    : 'Record saved. No points for this category.',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: hasPoints ? const Color(0xFF006C48) : Colors.grey.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   void _verifyManualRecord() {
@@ -718,7 +775,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                                 foregroundColor: Colors.white,
                                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                               ),
-                                              // 🔥 Goal 1: Block pressing if currently loading/submitting
                                               onPressed: _isLoading ? null : _verifyManualRecord, 
                                               child: const Text('Record Transaction', style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),

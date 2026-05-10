@@ -2,7 +2,6 @@ import math
 import os
 import json
 from datetime import datetime, timedelta, timezone
-from cachetools import TTLCache
 from google import genai
 from google.genai import types
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
@@ -29,17 +28,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allows any app to connect
+    allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"], # Allows GET, POST, PUT, DELETE
-    allow_headers=["*"], # Allows the Authorization header
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
 
-# Create the security scheme
 security = HTTPBearer()
-
-# --- AI CACHE (per-user, 100 items max, expires after 10 minutes) ---
-ai_cache = TTLCache(maxsize=100, ttl=600)
 
 # --- Data Models ---
 class TransactionRequest(BaseModel):
@@ -58,13 +53,13 @@ class PetUpdateRequest(BaseModel):
     last_interaction: Optional[str] = None
 
 class PetInteractRequest(BaseModel):
-    action: str # Expects "tap" or "feed"
+    action: str 
 
 class ProfileUpdateRequest(BaseModel):
     username: Optional[str] = None
     safe_to_spend_balance: Optional[float] = None
+    reward_points: Optional[int] = None # 🔥 Goal 1: Added reward points to profile updates
 
-# 🔥 Models for Money Pockets
 class PocketRequest(BaseModel):
     id: str
     name: str
@@ -80,11 +75,8 @@ class PocketReleaseRequest(BaseModel):
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    # HTTPBearer automatically extracts just the token string
     token = credentials.credentials
-    
     try:
-        # Verify the user with Supabase
         user = supabase.auth.get_user(token)
         if not user:
             raise HTTPException(status_code=401, detail="Invalid Token")
@@ -97,7 +89,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 async def reality_check(user = Depends(get_current_user)):
     user_id = user.user.id
     
-    # Get recent transactions for context
     res = supabase.table("transactions").select("amount, category, description").eq("user_id", user_id).limit(10).execute()
     recent_tx = res.data
     
@@ -110,27 +101,15 @@ async def reality_check(user = Depends(get_current_user)):
     - If spending is good, do not use those words.
     """
     
-    try:
-        # Keeping the 2.5 Flash model!
-        response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        
-        # Frontend expects exactly {"message": "..."}
-        return {"message": response.text.strip()}
-        
-    except Exception as e:
-        # 1. Print the error to your terminal so you know if you hit the quota
-        print(f"Reality Check Quota/API Error: {e}")
-        
-        # 2. Return a safe, standard message so Flutter doesn't crash!
-        # Notice we avoid the words "unhealthy" or "moderate" so the UI stays green.
-        return {"message": "Mochi is taking a quick nap to recharge! Your spending looks steady."}
+    response = gemini_client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt
+    )
+    
+    return {"message": response.text.strip()}
 
 @app.post("/pet/feed")
 async def feed_pet(user = Depends(get_current_user)):
-    # 1. Fetch the user's pet from Supabase
     response = supabase.table("pets").select("*").eq("user_id", user.user.id).execute()
     
     if not response.data:
@@ -138,29 +117,23 @@ async def feed_pet(user = Depends(get_current_user)):
     
     pet = response.data[0]
     
-    # 2. Lazy Evaluation: Calculate happiness loss over time
     last_time_str = pet["last_interacted_at"].replace("Z", "+00:00")
     last_interacted = datetime.fromisoformat(last_time_str)
     now = datetime.now(timezone.utc)
     
-    # Calculate how many hours have passed
     hours_passed = (now - last_interacted).total_seconds() / 3600
     
-    # Rule 6: Deduct 2 happiness for every hour they were gone
     happiness_loss = math.floor(hours_passed * 2)
     current_happiness = max(0, pet["happiness_level"] - happiness_loss)
     
-    # 3. Apply Feeding Effects (Rule 4 & 7)
     new_happiness = min(100, current_happiness + 10) 
     new_hunger = pet["hunger_level"] + 25          
     new_level = pet["level"]
     
-    # 4. Level Up Logic (Rule 3)
     if new_hunger >= 100:
         new_level += 1
-        new_hunger -= 100 # Keep the leftover EXP!
+        new_hunger -= 100 
         
-    # 5. Save the updated stats back to Supabase
     update_data = {
         "level": new_level,
         "hunger_level": new_hunger,
@@ -174,14 +147,12 @@ async def feed_pet(user = Depends(get_current_user)):
 
 @app.post("/pet/touch")
 async def touch_pet(user = Depends(get_current_user)):
-    # This is a lighter version of feed!
     response = supabase.table("pets").select("*").eq("user_id", user.user.id).execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="No pet found.")
     
     pet = response.data[0]
     
-    # Lazy Evaluation for time passed
     last_time_str = pet["last_interacted_at"].replace("Z", "+00:00")
     last_interacted = datetime.fromisoformat(last_time_str)
     now = datetime.now(timezone.utc)
@@ -190,8 +161,7 @@ async def touch_pet(user = Depends(get_current_user)):
     happiness_loss = math.floor(hours_passed * 2)
     current_happiness = max(0, pet["happiness_level"] - happiness_loss)
     
-    # Rule 7: Touching ONLY adds happiness, not hunger (EXP)
-    new_happiness = min(100, current_happiness + 5) # Touching adds 5 happiness
+    new_happiness = min(100, current_happiness + 5)
     
     update_data = {
         "happiness_level": new_happiness,
@@ -206,7 +176,6 @@ async def touch_pet(user = Depends(get_current_user)):
 @app.get("/transactions")
 async def get_transactions(user = Depends(get_current_user)):
     user_id = user.user.id
-    # Fetch and order by newest first
     res = supabase.table("transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
     return res.data
 
@@ -215,7 +184,7 @@ async def get_transactions(user = Depends(get_current_user)):
 async def log_transaction(req: TransactionRequest, user = Depends(get_current_user)):
     user_id = user.user.id
     
-    # 1. Save main transaction (using 'description' now!)
+    # 1. Save main transaction
     tx_data = {
         "user_id": user_id,
         "amount": req.amount,
@@ -229,40 +198,29 @@ async def log_transaction(req: TransactionRequest, user = Depends(get_current_us
         
     supabase.table("transactions").insert(tx_data).execute()
 
-    # 2. Habit Tabung (Flat RM 1.00)
+    # 2. Habit Tabung
     guilty_categories = ["Entertainment", "Shopping", "Guilty Pleasure"]
     
     if req.category in guilty_categories and req.type == "expense":
-        # First, check how much is currently in the piggy bank
         tax_res = supabase.table("habit_tax").select("amount").eq("user_id", user_id).execute()
         
         if tax_res.data:
             current_amount = tax_res.data[0]["amount"]
-            # Add RM 1.00
             supabase.table("habit_tax").update({"amount": current_amount + 1.00}).eq("user_id", user_id).execute()
 
-    # 3. Deduct transaction amount from Safe to Spend balance (expenses only)
-    if req.type == "expense":
-        profile_res = supabase.table("profiles").select("safe_to_spend_balance").eq("id", user_id).execute()
-        if profile_res.data:
-            current_balance = profile_res.data[0].get("safe_to_spend_balance") or 0.0
-            new_balance = current_balance - req.amount
-            supabase.table("profiles").update({"safe_to_spend_balance": new_balance}).eq("id", user_id).execute()
-
-    return {"message": "Transaction logged successfully!"}
+    # 🔥 The points logic was safely moved to the frontend per your request
+    return {
+        "message": "Transaction logged successfully!"
+    }
 
 @app.post("/ai/scan-receipt")
 async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_user)):
-    # 1. Read the file
     file_bytes = await file.read()
-    
-    # 2. Check the file type (Now accepts images AND pdfs!)
     allowed_types = ["image/jpeg", "image/png", "image/webp", "application/pdf"]
     
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Mochi only eats Images or PDFs! Please upload a valid file.")
 
-    # 3. The BULLETPROOF Magic Prompt
     prompt = """
     You are an expert financial receipt analyzer. Look at this document.
     First, determine if this image or PDF is actually a receipt, invoice, bill, or price tag.
@@ -276,7 +234,6 @@ async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_
     Do NOT include any markdown formatting like ```json or anything else. JUST the raw curly braces and data.
     """
 
-    # 4. Send the file and prompt to Gemini Vision
     try:
         response = gemini_client.models.generate_content(
             model='gemini-2.5-flash', 
@@ -286,21 +243,18 @@ async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_
             ]
         )
         
-        # 5. Clean up the response
         raw_text = response.text.strip()
         if raw_text.startswith("```json"):
             raw_text = raw_text.replace("```json", "").replace("```", "").strip()
             
         scanned_data = json.loads(raw_text)
         
-        # 6. THE BOUNCER: Check if Gemini thinks it's a real receipt
         if scanned_data.get("is_receipt") is False:
             raise HTTPException(
                 status_code=400, 
                 detail="Mochi is confused! This doesn't look like a receipt or bill. Please try again."
             )
         
-        # We also want to return whether this triggers the Habit Tax!
         guilty_categories = ["Entertainment", "Shopping", "Guilty Pleasure"]
         scanned_data["is_taxable"] = scanned_data["category"] in guilty_categories
 
@@ -320,24 +274,18 @@ async def get_profile(user = Depends(get_current_user)):
     user_id = user.user.id
     from datetime import datetime, timezone
     
-    # Get basic profile
     res = supabase.table("profiles").select("*").eq("id", user_id).execute()
     profile_data = res.data[0] if res.data else {"id": user_id, "username": "EcoPalUser", "streak": 1, "reward_points": 100, "safe_to_spend_balance": 2000.0}
 
-    # Ensure Safe to Spend exists for frontend validation
     if "safe_to_spend_balance" not in profile_data or profile_data["safe_to_spend_balance"] is None:
         profile_data["safe_to_spend_balance"] = 2000.0
 
-    # Calculate Weather Grade
     now = datetime.now(timezone.utc)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0).isoformat()
     tx_res = supabase.table("transactions").select("amount").eq("user_id", user_id).eq("type", "expense").gte("created_at", start_of_month).execute()
     total_spent = sum([item["amount"] for item in tx_res.data])
     
-    # If they are totally broke (balance is 0), default to 2000 to avoid math errors
-    monthly_budget = profile_data.get("safe_to_spend_balance", 2000.0) 
-    if monthly_budget <= 0:
-        monthly_budget = 2000.0
+    monthly_budget = 2000.00
     
     if total_spent >= monthly_budget * 0.9:
         profile_data["spending_grade"] = "Unhealthy" 
@@ -356,6 +304,8 @@ async def update_profile(req: ProfileUpdateRequest, user = Depends(get_current_u
         update_data["username"] = req.username
     if req.safe_to_spend_balance is not None:
         update_data["safe_to_spend_balance"] = req.safe_to_spend_balance
+    if req.reward_points is not None: # 🔥 Goal 1: Save points locally sent from the frontend
+        update_data["reward_points"] = req.reward_points
         
     if update_data:
         supabase.table("profiles").update(update_data).eq("id", user.user.id).execute()
@@ -365,7 +315,6 @@ async def update_profile(req: ProfileUpdateRequest, user = Depends(get_current_u
 # --- MONEY POCKETS API ---
 
 def compute_growth_stage(current_balance: float, target_amount: float) -> int:
-    """Determine growth stage based on current balance vs target amount."""
     if target_amount <= 0:
         return 1
     if current_balance >= target_amount:
@@ -382,25 +331,17 @@ async def get_pockets(user = Depends(get_current_user)):
 @app.post("/pockets")
 async def create_pocket(req: PocketRequest, user = Depends(get_current_user)):
     data = req.dict()
-    
-    # Remove the temporary frontend ID so Supabase generates a valid UUID
     data.pop("id", None)
     data["user_id"] = user.user.id
-
-    # Auto-compute growth_stage based on balance vs target
     data["growth_stage"] = compute_growth_stage(data["current_balance"], data["target_amount"])
     
     res = supabase.table("pockets").insert(data).execute()
-    
-    # Return the newly created record so the frontend knows the real UUID
     return {"message": "Pocket created successfully", "data": res.data[0]}
 
 @app.put("/pockets/{pocket_id}")
 async def update_pocket(pocket_id: str, req: PocketRequest, user = Depends(get_current_user)):
     data = req.dict()
-    data["user_id"] = user.user.id # security override
-
-    # Auto-compute growth_stage based on balance vs target
+    data["user_id"] = user.user.id 
     data["growth_stage"] = compute_growth_stage(data["current_balance"], data["target_amount"])
 
     supabase.table("pockets").update(data).eq("id", pocket_id).eq("user_id", user.user.id).execute()
@@ -415,17 +356,13 @@ async def delete_pocket(pocket_id: str, user = Depends(get_current_user)):
 async def release_pocket(pocket_id: str, req: PocketReleaseRequest, user = Depends(get_current_user)):
     user_id = user.user.id
     
-    # 1. Fetch Current Safe to Spend Balance
     res = supabase.table("profiles").select("safe_to_spend_balance").eq("id", user_id).execute()
     if res.data:
         curr_balance = res.data[0].get("safe_to_spend_balance", 0.0)
         if curr_balance is None: curr_balance = 0.0
         new_balance = curr_balance + req.amount
-        
-        # 2. Add released amount to profile
         supabase.table("profiles").update({"safe_to_spend_balance": new_balance}).eq("id", user_id).execute()
     
-    # 3. Delete Pocket
     supabase.table("pockets").delete().eq("id", pocket_id).eq("user_id", user_id).execute()
     return {"message": "Pocket released and funds transferred"}
 
@@ -433,7 +370,6 @@ async def release_pocket(pocket_id: str, req: PocketReleaseRequest, user = Depen
 async def release_partial_pocket(pocket_id: str, req: PocketReleaseRequest, user = Depends(get_current_user)):
     user_id = user.user.id
 
-    # 1. Fetch the pocket to validate and get current state
     pocket_res = supabase.table("pockets").select("*").eq("id", pocket_id).eq("user_id", user_id).execute()
     if not pocket_res.data:
         raise HTTPException(status_code=404, detail="Pocket not found.")
@@ -442,13 +378,11 @@ async def release_partial_pocket(pocket_id: str, req: PocketReleaseRequest, user
     current_balance = pocket.get("current_balance", 0.0) or 0.0
     target_amount = pocket.get("target_amount", 0.0) or 0.0
 
-    # 2. Validate the release amount
     if req.amount <= 0:
         raise HTTPException(status_code=400, detail="Release amount must be greater than zero.")
     if req.amount > current_balance:
         raise HTTPException(status_code=400, detail="Release amount exceeds current pocket balance.")
 
-    # 3. Compute new pocket balance, growth_stage and is_locked
     new_balance = current_balance - req.amount
     new_growth_stage = compute_growth_stage(new_balance, target_amount)
     new_is_locked = new_balance >= target_amount
@@ -459,7 +393,6 @@ async def release_partial_pocket(pocket_id: str, req: PocketReleaseRequest, user
         "is_locked": new_is_locked,
     }).eq("id", pocket_id).eq("user_id", user_id).execute()
 
-    # 4. Add released amount to Safe to Spend
     profile_res = supabase.table("profiles").select("safe_to_spend_balance").eq("id", user_id).execute()
     if profile_res.data:
         curr_safe = profile_res.data[0].get("safe_to_spend_balance", 0.0) or 0.0
@@ -471,7 +404,6 @@ async def release_partial_pocket(pocket_id: str, req: PocketReleaseRequest, user
         "new_growth_stage": new_growth_stage,
         "new_is_locked": new_is_locked,
     }
-
 
 # --- GAMIFICATION: PET INTERACTION ---
 @app.get("/pet")
@@ -569,13 +501,7 @@ async def update_habit_tax(req: HabitTaxUpdateRequest, user = Depends(get_curren
 
 @app.get("/ai/behavior")
 async def get_behavior_analysis(user = Depends(get_current_user)):
-    user_id = user.user.id
-
-    # Return cached result if available (avoids repeat Gemini API calls within 10 min)
-    if user_id in ai_cache:
-        return ai_cache[user_id]
-
-    res = supabase.table("transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
+    res = supabase.table("transactions").select("*").eq("user_id", user.user.id).order("created_at", desc=True).limit(20).execute()
     
     if not res.data:
         return {"message": "No spending data found yet. Start scanning receipts to see your behavior analysis!"}
@@ -591,18 +517,11 @@ async def get_behavior_analysis(user = Depends(get_current_user)):
     {history}
     """
 
-    try:
+    try: 
         response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=[prompt]
         )
-        # Frontend ApiService expects 'message' property
-        result = {"message": response.text.strip()}
-
-        # Store result in cache keyed by user_id
-        ai_cache[user_id] = result
-
-        return result
+        return {"message": response.text.strip()}
     except Exception as e:
-        print(f"Gemini API Error: {e}") # This prints the exact error to your terminal so you aren't guessing!
-        return {"analysis": "Mochi is still calculating your habits. Check back shortly!"}
+        return {"message": "Mochi is still calculating your habits. Check back shortly!"}
