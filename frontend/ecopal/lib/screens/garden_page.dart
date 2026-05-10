@@ -350,7 +350,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                               _safeToSpend = val;
                             });
                             Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Safe to Spend updated successfully!')));
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Main Account amount updated successfully!')));
                           }
                         } catch (e) {
                           if (ctx.mounted) {
