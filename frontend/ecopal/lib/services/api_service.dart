@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/services.dart' show rootBundle; 
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:dio/dio.dart';
 
 class ApiService {
   static bool isMockData = false;
@@ -12,6 +13,8 @@ class ApiService {
     final session = Supabase.instance.client.auth.currentSession;
     return session?.accessToken;
   }
+
+  static final Dio _dio = Dio();
 
   // ===========================================================================
   // 1. AI REALITY CHECK (Insights)
@@ -113,7 +116,7 @@ class ApiService {
   }
 
   // ===========================================================================
-  // 6. UPDATE ACTIONS 
+  // 6. UPDATE ACTIONS
   // ===========================================================================
   static Future<void> updatePetStatus(Map<String, dynamic> data) async {
     if (isMockData) {
@@ -131,6 +134,19 @@ class ApiService {
   }
 
   static Future<void> updateProfile(Map<String, dynamic> data) async {
+    // 1. SAFEGUARD VALIDATION
+    if (data.containsKey('safe_to_spend_balance')) {
+      final balance = data['safe_to_spend_balance'];
+      
+      // Ensure it is a number and not negative
+      if (balance is! num) {
+        throw Exception('Validation Error: safe_to_spend_balance must be a number');
+      }
+      if (balance < 0) {
+        throw Exception('Validation Error: safe_to_spend_balance cannot be negative');
+      }
+    }
+
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
       return; 
@@ -142,11 +158,14 @@ class ApiService {
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(data),
     );
-    if (response.statusCode != 200) throw Exception('Backend error');
+    
+    if (response.statusCode != 200) {
+      throw Exception('Backend error: ${response.statusCode}');
+    }
   }
 
   // ===========================================================================
-  // 7. INTERACTIONS
+  // 7. INTERACTIONS & POCKETS
   // ===========================================================================
   static Future<void> interactWithPet(String action) async {
     if (isMockData) {
@@ -163,18 +182,24 @@ class ApiService {
     if (response.statusCode != 200) throw Exception('Backend error');
   }
 
-  static Future<void> createPocket(Map<String, dynamic> data) async {
+  static Future<String> createPocket(Map<String, dynamic> data) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
-      return;
+      return data['id']; 
     }
+    
     final token = _getAuthToken();
     final response = await http.post(
       Uri.parse('$baseUrl/pockets'),
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(data),
     );
-    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Backend error');
+    
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Backend error');
+    }
+    
+    return jsonDecode(response.body)['data']['id'];
   }
 
   static Future<void> updatePocket(String id, Map<String, dynamic> data) async {
@@ -189,6 +214,25 @@ class ApiService {
       body: jsonEncode(data),
     );
     if (response.statusCode != 200) throw Exception('Backend error');
+  }
+
+  // 🔥 GOAL 1: Validated releasePartialPocket
+  static Future<void> releasePartialPocket(String pocketId, double amount) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      return;
+    }
+    
+    final token = _getAuthToken();
+    final response = await http.post(
+      Uri.parse('$baseUrl/pockets/$pocketId/release-partial'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'amount': amount}),
+    );
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to release partial pocket: ${response.statusCode}');
+    }
   }
 
   static Future<void> deletePocket(String id) async {
@@ -327,38 +371,29 @@ class ApiService {
       await Future.delayed(const Duration(milliseconds: 300));
     }
     
-    // Randomize and return one of the tips
     _savingsTips.shuffle();
     return _savingsTips.first;
   }
 
-  // Send the receipt file to FastAPI for AI Analysis
   static Future<Map<String, dynamic>> scanReceipt(dynamic file) async {
-    // 1. Get the Supabase Auth Token so Python doesn't reject us
     final session = Supabase.instance.client.auth.currentSession;
     final token = session?.accessToken;
 
     if (token == null) throw Exception('User not logged in');
 
-    // 2. Set up the URL (Make sure '/scan' matches your Python endpoint!)
-    final uri = Uri.parse('$baseUrl/scan');
+    final uri = Uri.parse('$baseUrl/ai/scan-receipt');
     
-    // 3. Create a "Multipart" request because we are sending a file
     var request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer $token';
 
-    // 4. Attach the file (Handles both path-based Files and web-based bytes)
     if (file is String) {
-      // If the file is passed as a string file path
       request.files.add(await http.MultipartFile.fromPath('file', file));
     } else if (file.path != null) {
-      // If the file is passed as an XFile or standard File object
       request.files.add(await http.MultipartFile.fromPath('file', file.path));
     } else {
       throw Exception('Unsupported file format sent to scanner');
     }
 
-    // 5. Send it to Python and wait for Gemini to do its magic!
     var streamedResponse = await request.send();
     var response = await http.Response.fromStream(streamedResponse);
 

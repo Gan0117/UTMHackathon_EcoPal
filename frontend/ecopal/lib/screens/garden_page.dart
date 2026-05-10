@@ -4,6 +4,10 @@ import 'dart:math' as math;
 import '../widgets/bottom_nav_bar.dart';
 import '../services/api_service.dart';
 import 'pet_room_page.dart';
+import 'profile_page.dart';
+import 'scanner_page.dart';
+import 'ai_insight_page.dart';
+import '../widgets/floating_pet.dart';
 
 class MoneyPocket {
   String id;
@@ -89,6 +93,10 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showFloatingPet.value = true;
+    });
     
     _animationController = AnimationController(
       vsync: this,
@@ -212,6 +220,15 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
   double get _totalTarget => _pockets.fold(0, (sum, p) => sum + p.targetAmount);
   String get _currentWeather => _weatherState(_safeToSpend, _totalTarget);
 
+  /// Computes the growth stage based on current balance vs target amount.
+  /// Stage 3 = reached target, Stage 2 = over 50%, Stage 1 = below 50%.
+  int _computeGrowthStage(double currentBalance, double targetAmount) {
+    if (targetAmount <= 0) return 1;
+    if (currentBalance >= targetAmount) return 3;
+    if (currentBalance > targetAmount * 0.5) return 2;
+    return 1;
+  }
+
   String _formatAmount(double amount) {
     if (amount >= 1000) {
       return 'RM${(amount / 1000).toStringAsFixed(amount % 1000 == 0 ? 0 : 1)}K';
@@ -241,6 +258,116 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
   void _onBackgroundTap() {
     if (_deleteMode) setState(() => _deleteMode = false);
+  }
+
+  // --- 🔥 Goal 1 & 2: Safe To Spend Modifier via API Service ---
+  void _showEditSafeToSpendDialog() {
+    final amountController = TextEditingController(text: _safeToSpend.toStringAsFixed(2));
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: const Color(0xFFEDEDEF),
+            title: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDDDDE0),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.edit, color: Color(0xFF4CAF50), size: 20),
+                ),
+                const SizedBox(width: 12),
+                const Text('Edit Safe to Spend', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Amount', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 1500.00',
+                    prefixText: 'RM ',
+                    filled: true,
+                    fillColor: const Color(0xFFE2E2E5),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: const BorderSide(color: Color(0xFFB0B0B3)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: isSaving ? null : () async {
+                        final val = double.tryParse(amountController.text);
+                        if (val == null || val < 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a valid amount.')));
+                          return;
+                        }
+                        
+                        setDialogState(() => isSaving = true);
+                        try {
+                          await ApiService.updateProfile({'safe_to_spend_balance': val});
+                          if (ctx.mounted) {
+                            setState(() {
+                              _safeToSpend = val;
+                            });
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Safe to Spend updated successfully!')));
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            setDialogState(() => isSaving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to update balance.')));
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4CAF50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                      ),
+                      child: isSaving 
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
@@ -303,21 +430,33 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             _loadData(); 
                             setState(() => _deleteMode = false);
                             
-                            // 🔥 Show Success Message on successful deletion / release
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  isFromReleaseButton 
-                                    ? 'Funds successfully released to main account!' 
-                                    : 'Plant successfully deleted and funds transferred!'
+                                content: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        isFromReleaseButton 
+                                          ? 'Funds successfully released to main account!' 
+                                          : '🌱 Plant removed. Funds returned to main account!',
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                                backgroundColor: const Color(0xFF2E7D32),
                                 behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                duration: const Duration(seconds: 3),
                               )
                             );
                           }
                         } catch (_) {
                           if (ctx.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Failed to process request.")));
                           }
                         }
                       },
@@ -335,6 +474,205 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showPartialReleaseDialog(MoneyPocket pocket, int index) {
+    final amountController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isReleasing = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: const Color(0xFFEDEDEF),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.payments_outlined, color: Color(0xFF4CAF50), size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Release Amount',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Pocket balance info card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFD0D0D3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Available in pocket', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                          Text(
+                            'RM${pocket.currentBalance.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Amount input
+                    _buildFieldLabel('Amount to Release'),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. 200.00',
+                        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                        prefixText: 'RM ',
+                        prefixStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w500),
+                        filled: true,
+                        fillColor: const Color(0xFFE2E2E5),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD0D0D3))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 1.5)),
+                        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Please enter an amount';
+                        final val = double.tryParse(v);
+                        if (val == null || val <= 0) return 'Enter a valid amount greater than 0';
+                        if (val > pocket.currentBalance) return 'Cannot exceed pocket balance (RM${pocket.currentBalance.toStringAsFixed(2)})';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'The amount will be moved to your Main Account.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, height: 1.4),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isReleasing ? null : () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              side: const BorderSide(color: Color(0xFFB0B0B3)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF888888))),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isReleasing
+                                ? null
+                                : () async {
+                                    if (!formKey.currentState!.validate()) return;
+                                    final amount = double.parse(amountController.text);
+                                    setDialogState(() => isReleasing = true);
+                                    try {
+                                      await ApiService.releasePartialPocket(pocket.id, amount);
+                                      // Update local state immediately — no full reload needed
+                                      final newBalance = pocket.currentBalance - amount;
+                                      final newStage = _computeGrowthStage(newBalance, pocket.targetAmount);
+                                      setState(() {
+                                        _pockets[index] = MoneyPocket(
+                                          id: pocket.id,
+                                          name: pocket.name,
+                                          targetAmount: pocket.targetAmount,
+                                          currentBalance: newBalance,
+                                          growthStage: newStage,
+                                          isLocked: newBalance >= pocket.targetAmount,
+                                          isAutoDeduct: pocket.isAutoDeduct,
+                                          autoDeductAmount: pocket.autoDeductAmount,
+                                        );
+                                        _safeToSpend += amount;
+                                      });
+                                      if (ctx.mounted) {
+                                        Navigator.pop(ctx);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    'RM${amount.toStringAsFixed(2)} released to Main Account!',
+                                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor: const Color(0xFF2E7D32),
+                                            behavior: SnackBarBehavior.floating,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                            duration: const Duration(seconds: 3),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => isReleasing = false);
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Failed to release funds. Please try again.')),
+                                        );
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                            ),
+                            child: isReleasing
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -451,20 +789,30 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                             final isLocked = currentBal >= targetAmt;
 
                             final newPocket = MoneyPocket(
-                              id: 'p${DateTime.now().millisecondsSinceEpoch}',
+                              id: 'temp_${DateTime.now().millisecondsSinceEpoch}', // Temporary ID
                               name: nameController.text.trim(),
                               targetAmount: targetAmt,
                               currentBalance: currentBal,
-                              growthStage: 1,
+                              growthStage: _computeGrowthStage(currentBal, targetAmt),
                               isLocked: isLocked,
                               isAutoDeduct: false,
                               autoDeductAmount: 0.0,
                             );
+                            
                             try {
-                              await ApiService.createPocket(newPocket.toJson());
-                            } catch (_) {}
-                            setState(() => _pockets.add(newPocket));
-                            if (ctx.mounted) Navigator.pop(ctx);
+                              // Await the real UUID from the backend
+                              final realId = await ApiService.createPocket(newPocket.toJson());
+                              newPocket.id = realId; // Apply the real UUID to the local object
+                              
+                              setState(() => _pockets.add(newPocket));
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to create pocket.'))
+                                );
+                              }
+                            }
                           }
                         },
                         style: ElevatedButton.styleFrom(
@@ -585,7 +933,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                               name: nameController.text.trim(),
                               targetAmount: targetAmt,
                               currentBalance: currentBal,
-                              growthStage: pocket.growthStage,
+                              growthStage: _computeGrowthStage(currentBal, targetAmt),
                               isLocked: isLocked,
                               isAutoDeduct: isLocked ? false : pocket.isAutoDeduct,
                               autoDeductAmount: pocket.autoDeductAmount, 
@@ -866,6 +1214,24 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           child: const Text('Close', style: TextStyle(color: Color(0xFF888888))),
                         ),
                       ),
+                      if (pocket.currentBalance > 0) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showPartialReleaseDialog(pocket, index);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                            ),
+                            child: const Text('Release Amount', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
+                        ),
+                      ],
                       if (!pocket.isLocked) ...[
                         const SizedBox(width: 12),
                         Expanded(
@@ -875,12 +1241,12 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                               _showEditPocketDialog(index);
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF4CAF50),
+                              backgroundColor: const Color(0xFFE2E2E5),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               elevation: 0,
                             ),
-                            child: const Text('Edit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            child: const Text('Add Money', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -1062,10 +1428,10 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
       ),
       body: Stack(
         children: [
-          GestureDetector(
+          Positioned.fill(
+          child: GestureDetector(
             onTap: _onBackgroundTap,
-            child: Positioned.fill(
-              child: InteractiveViewer(
+            child: InteractiveViewer(
                 transformationController: _transformationController,
                 boundaryMargin: EdgeInsets.zero,
                 minScale: minScaleToFit,
@@ -1077,6 +1443,104 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   child: Stack(
                     children: [
                       Image.asset('widgets/dashboard/farm.gif', width: 1920, height: 1080, fit: BoxFit.cover),
+
+                    if (!_isLoading && _error == null && _pockets.isNotEmpty)
+                      Positioned(
+                        left: 50,
+                        top: 200,
+                        width: 280,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.white.withOpacity(0.2)),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (int i = 0; i < _pockets.length; i++) ...[
+                                    Builder(builder: (context) {
+                                      final pocket = _pockets[i];
+                                      final progress = pocket.targetAmount > 0
+                                          ? (pocket.currentBalance / pocket.targetAmount).clamp(0.0, 1.0)
+                                          : 0.0;
+                                      final isComplete = progress >= 1.0;
+                                      return ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: BackdropFilter(
+                                          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                          child: Container(
+                                            margin: const EdgeInsets.all(8),
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: isComplete ? Colors.green.withOpacity(0.15) : Colors.white.withOpacity(0.12),
+                                              borderRadius: BorderRadius.circular(14),
+                                              border: Border.all(
+                                                color: isComplete ? Colors.green.withOpacity(0.4) : Colors.white.withOpacity(0.2),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Image.asset(_treeImage(i, pocket.growthStage), width: 36, height: 36, fit: BoxFit.contain),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(pocket.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                                                    ),
+                                                    GestureDetector(
+                                                      onTap: () => _showEditPocketDialog(i),
+                                                      child: const Icon(Icons.edit, color: Colors.white70, size: 16),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text(_formatAmount(pocket.currentBalance),
+                                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                                                    Text('RM${pocket.targetAmount.toStringAsFixed(0)}',
+                                                        style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.7))),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 5),
+                                                ClipRRect(
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  child: LinearProgressIndicator(
+                                                    value: progress,
+                                                    minHeight: 6,
+                                                    backgroundColor: Colors.white.withOpacity(0.2),
+                                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                                      isComplete ? Colors.green : const Color(0xFFE5B94A),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  isComplete ? 'Done!' : '${(progress * 100).toStringAsFixed(0)}%',
+                                                  style: TextStyle(fontSize: 10, color: isComplete ? Colors.greenAccent : Colors.white70, fontWeight: FontWeight.w600),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
                       Positioned(
                         left: 1040, 
                         top: 870,   
@@ -1092,8 +1556,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           left: 1100, 
                           top: 840,   
                           child: MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringCat = true),
-                            onExit: (_) => setState(() => _isHoveringCat = false),
+                            cursor: SystemMouseCursors.click,
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent, 
                               onTap: () {
@@ -1114,25 +1577,155 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                     color: Colors.transparent, 
                                     child: Image.asset(_catHappyGif, fit: BoxFit.contain),
                                   ),
-                                  
-                                  if (_isHoveringCat)
-                                    Positioned(
-                                      left: 120, 
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.95),
-                                          borderRadius: BorderRadius.circular(14),
-                                          boxShadow: [
-                                            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                                          ],
-                                        ),
-                                        child: const Text(
-                                          'Feed it!',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
-                                        ),
-                                      ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      if (_petSpecies != null)
+                        Positioned(
+                          left: 1500,
+                          top: 560,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const PetRoomPage()),
+                                ).then((_) {
+                                  _loadData();
+                                });
+                              },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
+                                    child: const Text('Pet Room', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: 350,
+                                    height: 350,
+                                    child: Image.asset('widgets/dashboard/pet_house.png', fit: BoxFit.contain),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      Positioned(
+                        left: 1500,
+                        top: 160,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ProfilePage()),
+                              );
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Profile', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: 350,
+                                  height: 350,
+                                  child: Image.asset('widgets/dashboard/profile_shadow.png', fit: BoxFit.contain),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      if (_petSpecies != null)
+                      Positioned(
+                        left: 1280,
+                        top: 660,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ScannerPage()),
+                              );
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Scanner', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: 160,
+                                  height: 160,
+                                  child: Image.asset('widgets/dashboard/pet_book.png', fit: BoxFit.contain),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      if (_petSpecies != null)
+                        Positioned(
+                          left: 1200,
+                          top: 260,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const AiInsightPage()),
+                                );
+                              },
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text('Insights', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: 300,
+                                    height: 300,
+                                    child: Image.asset('widgets/dashboard/computer.png', fit: BoxFit.contain),
+                                  ),
                                 ],
                               ),
                             ),
@@ -1151,6 +1744,7 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
               ),
             ),
           ),
+      
 
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Color(0xFF4CAF50))),
@@ -1181,61 +1775,76 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                   borderRadius: BorderRadius.circular(20),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.75),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.4)),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'SAFE TO SPEND',
-                            style: TextStyle(fontSize: 11, color: Colors.black54, letterSpacing: 1.8, fontWeight: FontWeight.w700),
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.75),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.4)),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'RM${_safeToSpend.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.black87),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: weather == 'storm' ? Colors.red.withOpacity(0.12) : weather == 'overcast' ? Colors.orange.withOpacity(0.12) : Colors.green.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  weather == 'storm' ? '⛈️' : weather == 'overcast' ? '⛅' : '☀️',
-                                  style: const TextStyle(fontSize: 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Main Account',
+                                style: TextStyle(fontSize: 11, color: Colors.black54, letterSpacing: 1.8, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'RM${_safeToSpend.toStringAsFixed(2)}',
+                                style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.black87),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: weather == 'storm' ? Colors.red.withOpacity(0.12) : weather == 'overcast' ? Colors.orange.withOpacity(0.12) : Colors.green.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  weather == 'storm' ? 'Storm' : weather == 'overcast' ? 'Overcast' : 'Sunny',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: weather == 'storm' ? Colors.red : weather == 'overcast' ? Colors.orange : const Color(0xFF2E7D32),
-                                  ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      weather == 'storm' ? '⛈️' : weather == 'overcast' ? '⛅' : '☀️',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      weather == 'storm' ? 'Storm' : weather == 'overcast' ? 'Overcast' : 'Sunny',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: weather == 'storm' ? Colors.red : weather == 'overcast' ? Colors.orange : const Color(0xFF2E7D32),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        
+                        // 🔥 Goal 1: Add a discrete Edit Button to the top corner of the Safe to Spend Box
+                        Positioned(
+                          top: 10,
+                          right: 12,
+                          child: GestureDetector(
+                            onTap: _showEditSafeToSpendDialog,
+                            child: const Icon(Icons.edit, size: 18, color: Colors.black54),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
+
 
           if (!_isLoading && _error == null)
             Positioned(
