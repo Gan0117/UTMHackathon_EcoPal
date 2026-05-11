@@ -1,6 +1,6 @@
 # UTMHackathon_EcoPal
 # 🌿 EcoPal — Natural Finance
-# To access the app : https://utmhackathon-ecopal.netlify.app/
+# Visit the app : https://utmhackathon-ecopal.netlify.app/
 
 > *Your money, your ecosystem. Spend wisely, grow naturally.*
 
@@ -173,3 +173,7 @@ Built for **UTM Hackathon** — a project exploring how gamification and AI can 
 ## 📄 License
 
 This project was created for hackathon purposes. All rights reserved by the team.
+
+## 🌐 Try It Now
+
+visit: https://utmhackathon-ecopal.netlify.app
