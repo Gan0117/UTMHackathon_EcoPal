@@ -1,5 +1,6 @@
 # UTMHackathon_EcoPal
 # 🌿 EcoPal — Natural Finance
+# To access the app : https://utmhackathon-ecopal.netlify.app/
 
 > *Your money, your ecosystem. Spend wisely, grow naturally.*
 
