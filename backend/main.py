@@ -105,12 +105,17 @@ async def reality_check(user = Depends(get_current_user)):
     - If spending is good, do not use those words.
     """
     
-    response = gemini_client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt
-    )
-    
-    return {"message": response.text.strip()}
+    try:
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return {"message": response.text.strip()}
+        
+    except Exception as e:
+        print(f"Reality Check Quota/API Error: {e}")
+        # THIS IS THE MAGIC LINE THAT STOPS THE 500 ERROR!
+        return {"message": "Mochi is taking a quick nap to recharge! Your spending looks steady."}
 
 @app.post("/pet/feed")
 async def feed_pet(user = Depends(get_current_user)):
