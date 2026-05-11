@@ -163,10 +163,11 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
   String get _gifPath {
     String f1 = _species.toLowerCase();
     String f2 = _level <= 3 ? 'kitten' : 'cat';
-    String px = _species == 'Tabby' ? (_level <= 3 ? 'kit_' : 'cat_') : (_level <= 3 ? 'orkt_' : 'org_');
+    String px = f1 == 'tabby' ? (_level <= 3 ? 'kit_' : 'cat_') : (_level <= 3 ? 'orkt_' : 'org_');
+    
     return 'widgets/$f1/$f2/${px}idle.gif';
   }
-
+  
   void speak(String text) {
     setState(() => _message = text);
     Future.delayed(const Duration(seconds: 4), () {
