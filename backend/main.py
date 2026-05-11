@@ -28,7 +28,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=[
+        "https://utmhackathon-ecopal.netlify.app", 
+        "http://localhost:3000", # Keep this so it still works on your local computer!
+        "http://127.0.0.1:3000"
+    ], 
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
