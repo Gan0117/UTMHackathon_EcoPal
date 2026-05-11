@@ -289,7 +289,9 @@ async def get_profile(user = Depends(get_current_user)):
     tx_res = supabase.table("transactions").select("amount").eq("user_id", user_id).eq("type", "expense").gte("created_at", start_of_month).execute()
     total_spent = sum([item["amount"] for item in tx_res.data])
     
-    monthly_budget = 2000.00
+    monthly_budget = profile_data.get("safe_to_spend_balance", 2000.0) 
+    if monthly_budget <= 0:
+        monthly_budget = 2000.0
     
     if total_spent >= monthly_budget * 0.9:
         profile_data["spending_grade"] = "Unhealthy" 
