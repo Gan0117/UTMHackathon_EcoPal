@@ -72,10 +72,11 @@ A virtual cat lives in your garden and reacts to your financial behaviour.
 ### ⭐ Reward Points System
 Healthy spending earns points that can be used to care for your pet.
 
-| Spending Category | Points Earned |
+| Transactions Category | Points Earned |
 |---|---|
-| Food, Groceries, Utilities, Bills | +15 points |
-| Other / Moderate categories | +5 points |
+| Add Money | +20 points |
+| Food, Groceries, Utilities, Bills , Transport| +15 points |
+| Other | +5 points |
 | Entertainment / Guilty Pleasure | +0 points |
 
 ### 👤 Profile & Social Sharing

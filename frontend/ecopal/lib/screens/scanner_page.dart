@@ -39,7 +39,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   final Color habitTaxGold = const Color(0xFFD4AF37);
   final Color alertDanger = const Color(0xFFEF4444);
 
-  // 🔥 Goal 1: Added 'Add Money' to categories to enable logging and filtering of income
   final List<String> _categories = ['Food', 'Groceries', 'Utilities', 'Entertainment', 'Transport', 'Add Money', 'Other'];
 
   @override
@@ -105,73 +104,145 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
 
   void _showConfirmationDialog(Map<String, dynamic> txData) {
     final isIncome = txData['type'] == 'income';
+    bool isSaving = false; 
     
     showDialog(
       context: context,
+      barrierDismissible: false, 
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white.withOpacity(0.95),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Confirm Details', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Record Type: ${isIncome ? 'Income (Add Money)' : 'Expense'}', style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 8),
-              Text('Category: ${txData['category']}', style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 8),
-              Text('Amount: \$${txData['amount'].toStringAsFixed(2)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isIncome ? secondaryColor : Colors.black87)),
-              const SizedBox(height: 8),
-              Text('Note: ${txData['description']}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel / Edit', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white),
-              onPressed: () {
-                Navigator.pop(context);
-                _submitToBackend(txData);
-              },
-              child: const Text('Save Record'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white.withOpacity(0.95),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text('Confirm Details', style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Record Type: ${isIncome ? 'Income (Add Money)' : 'Expense'}', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Category: ${txData['category']}', style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Amount: \$${txData['amount'].toStringAsFixed(2)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isIncome ? secondaryColor : Colors.black87)),
+                  const SizedBox(height: 8),
+                  Text('Note: ${txData['description']}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel / Edit', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white),
+                  onPressed: isSaving 
+                      ? null 
+                      : () async {
+                          setDialogState(() => isSaving = true);
+                          Navigator.pop(context);
+                          await _submitToBackend(txData);
+                        },
+                  child: isSaving 
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Save Record'),
+                ),
+              ],
+            );
+          }
         );
       },
     );
   }
 
+  // 🔥 Goal 1: Compute points locally and update Profile via API
   Future<void> _submitToBackend(Map<String, dynamic> txData) async {
     setState(() => _isLoading = true);
+    
+    // 1. Calculate Reward Points locally
+    int pointsEarned = 0;
+    final category = txData['category']?.toString().toLowerCase() ?? '';
+    if (category  == 'food' || category == 'groceries' || category == 'utilities' || category == 'bills' || category == 'transport') {
+      pointsEarned = 15;
+    } else if (category == 'other'){
+      pointsEarned = 5;
+    } else if (category == 'add money') {
+      pointsEarned = 20;
+    } else {
+      pointsEarned = 0;
+    }
+    
     try {
-      await ApiService.postTransaction(txData); 
+      // 2. Post the Transaction 
+      await ApiService.postTransaction(txData);
       
-      setState(() {
-        _transactions.insert(0, {
-          "id": "tx-${DateTime.now().millisecondsSinceEpoch}",
-          ...txData,
-        });
-        
-        _amountController.clear();
-        _timeController.clear();
-        _customCategoryController.clear();
-        _descriptionController.clear();
-        _isManualExpanded = false;
-      });
-      
-      await _fetchAIAnalysis();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record successfully saved!')));
+      // 3. Update Profile Reward Points if points were earned
+      if (pointsEarned > 0) {
+        final profile = await ApiService.getProfile();
+        final currentPoints = (profile['reward_points'] as num?)?.toInt() ?? 0;
+        await ApiService.updateProfile({'reward_points': currentPoints + pointsEarned});
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save record.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save transaction.')));
+      return;
     }
+
+    // 4. Update the UI
+    setState(() {
+      _transactions.insert(0, {
+        "id": "tx-${DateTime.now().millisecondsSinceEpoch}",
+        ...txData,
+      });
+      
+      _amountController.clear();
+      _timeController.clear();
+      _customCategoryController.clear();
+      _descriptionController.clear();
+      _isManualExpanded = false;
+    });
+    
+    await _fetchAIAnalysis();
+    
+    if (mounted) {
+      _showRewardSnackBar(pointsEarned);
+      if (pointsEarned > 0) {
+        // Trigger pet celebration
+        rewardPointsEarnedNotifier.value = 0; 
+        rewardPointsEarnedNotifier.value = pointsEarned;
+      }
+    }
+  }
+
+  void _showRewardSnackBar(int points) {
+    final bool hasPoints = points > 0;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              hasPoints ? Icons.stars_rounded : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                hasPoints
+                    ? 'Record saved!  +$points reward points earned ✨'
+                    : 'Record saved. No points for this category.',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: hasPoints ? const Color(0xFF006C48) : Colors.grey.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   void _verifyManualRecord() {
@@ -181,7 +252,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       String finalCategory = _selectedCategory;
       String txType = 'expense';
       
-      // 🔥 Goal 1: Set type to income if 'Add Money' is selected
       if (_selectedCategory == 'Add Money') {
         txType = 'income';
       } else if (_selectedCategory == 'Other') {
@@ -266,7 +336,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
           "category": extractedData["category"] ?? "Unknown", 
           "amount": (extractedData["amount"] as num?)?.toDouble() ?? 0.0,
           "description": extractedData["title"] ?? "Extracted from: $fileName",
-          "type": "expense", // AI scanner assumes expenses
+          "type": "expense", 
           "created_at": DateTime.now().toIso8601String()
         });
       }
@@ -337,7 +407,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setSheetState) {
             
-            // 🔥 Goal 1: Filtering logic that captures 'Add Money' records correctly
             List<dynamic> filteredList = _transactions.where((tx) {
               bool isIncome = (tx['type'] ?? '') == 'income';
               
@@ -395,7 +464,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                         child: DropdownButtonFormField<String>(
                           value: filterCategory,
                           decoration: _inputDecoration(),
-                          // Adding 'Add Money' into the filter list explicitly (already inside _categories)
                           items: ['All', ..._categories].map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 13)))).toList(),
                           onChanged: (val) => setSheetState(() => filterCategory = val!),
                         ),
@@ -707,7 +775,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                                                 foregroundColor: Colors.white,
                                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                               ),
-                                              onPressed: _verifyManualRecord, 
+                                              onPressed: _isLoading ? null : _verifyManualRecord, 
                                               child: const Text('Record Transaction', style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                           )

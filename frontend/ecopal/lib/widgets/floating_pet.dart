@@ -5,6 +5,8 @@ import '../services/api_service.dart';
 // Global controllers to manage the pet's visibility and data state from ANY page
 final ValueNotifier<bool> showFloatingPet = ValueNotifier<bool>(false);
 final ValueNotifier<int> reloadPetTrigger = ValueNotifier<int>(0);
+// 🔥 Goal 1: Added reward points global notifier
+final ValueNotifier<int> rewardPointsEarnedNotifier = ValueNotifier<int>(0); 
 
 class FloatingPet extends StatefulWidget {
   const FloatingPet({super.key});
@@ -14,29 +16,20 @@ class FloatingPet extends StatefulWidget {
 }
 
 class FloatingPetState extends State<FloatingPet> with SingleTickerProviderStateMixin {
-  // Initial floating position on the screen
   Offset _position = const Offset(20, 100);
 
-  // Dynamic Pet State
   String _species = '';
   int _level = 1;
   bool _isLoading = true;
-
-  // AI Chatbox State
   String? _message;
   
-  // Goal 1: Animation Controller for Edge Snapping
   late AnimationController _snapController;
   late Animation<Offset> _snapAnimation;
 
-  // Goal 2 & 3: Periodic Cheer Timer & State
   Timer? _cheerTimer;
   bool _isNextCheerPocket = true;
-
-  // Goal 4: Greeting State
   bool _hasGreeted = false;
 
-  // Approximate sizes for boundary calculations
   final double _petSize = 65.0;
   final double _bubbleMaxWidth = 220.0;
   final double _edgeMargin = 10.0;
@@ -47,9 +40,9 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
     _loadPetData();
     
     reloadPetTrigger.addListener(_loadPetData);
-    showFloatingPet.addListener(_handleVisibilityChange); // Goal 4 listener
+    showFloatingPet.addListener(_handleVisibilityChange); 
+    rewardPointsEarnedNotifier.addListener(_handleRewardPoints); // 🔥 Listen to new point events
 
-    // Goal 1: Initialize Animation Controller
     _snapController = AnimationController(
       vsync: this, 
       duration: const Duration(milliseconds: 350)
@@ -60,7 +53,6 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
       });
     });
 
-    // Goal 2 & 3: Start the cheerleader timer (runs every 3 minutes)
     _cheerTimer = Timer.periodic(const Duration(minutes: 3), (timer) {
       _triggerPeriodicCheer();
     });
@@ -70,6 +62,7 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
   void dispose() {
     reloadPetTrigger.removeListener(_loadPetData);
     showFloatingPet.removeListener(_handleVisibilityChange);
+    rewardPointsEarnedNotifier.removeListener(_handleRewardPoints);
     _snapController.dispose();
     _cheerTimer?.cancel();
     super.dispose();
@@ -84,7 +77,7 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
           _level = petData['level'] ?? 1;
           _isLoading = false;
         });
-        _handleVisibilityChange(); // Trigger greeting if data just loaded and pet is visible
+        _handleVisibilityChange(); 
       }
     } catch (e) {
       if (mounted) {
@@ -96,15 +89,11 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
     }
   }
 
-  // --- Goal 4: Greeting Logic ---
   void _handleVisibilityChange() {
-    // Only greet if the pet is visible, data is loaded, and we haven't greeted yet this session
     if (showFloatingPet.value && !_isLoading && _species.isNotEmpty && !_hasGreeted) {
       _hasGreeted = true;
-      
       final hour = DateTime.now().hour;
       String greeting;
-      
       if (hour < 12) {
         greeting = "Good morning!";
       } else if (hour < 18) {
@@ -112,19 +101,23 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
       } else {
         greeting = "Good evening!";
       }
-      
       speak(greeting);
     }
   }
 
-  // --- Goal 2 & 3: Periodic Cheer Logic ---
+  // 🔥 Goal 1: Handle reward points feedback visually with the pet!
+  void _handleRewardPoints() {
+    final points = rewardPointsEarnedNotifier.value;
+    if (points > 0) {
+      speak("Awesome! We earned $points reward points! 🌟");
+    }
+  }
+
   Future<void> _triggerPeriodicCheer() async {
-    // Don't interrupt if the pet is hidden, loading, or already talking
     if (!showFloatingPet.value || _isLoading || _message != null) return;
 
     try {
       if (_isNextCheerPocket) {
-        // Goal 2: The Garden Cheerleader (Pocket Progress)
         final pockets = await ApiService.getPockets();
         double bestRatio = -1.0;
         String? bestPocketName;
@@ -136,7 +129,6 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
 
           if (target > 0 && !isLocked) {
             double ratio = current / target;
-            // We only want to cheer for pockets that are in progress
             if (ratio > bestRatio && ratio < 1.0) {
               bestRatio = ratio;
               bestPocketName = p['name'];
@@ -148,13 +140,11 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
           speak("You are ${(bestRatio * 100).toInt()}% of the way to your '$bestPocketName' goal! Keep going!");
           _isNextCheerPocket = false; 
         } else {
-          // If no pocket is currently active, instantly fallback to checking Habit Tax
           _isNextCheerPocket = false;
           _triggerPeriodicCheer(); 
         }
 
       } else {
-        // Goal 3: Habit Tax Celebrations
         final taxData = await ApiService.getHabitTax();
         bool isAvailable = taxData['available'] ?? false;
         double amount = (taxData['amount'] ?? 0).toDouble();
@@ -166,22 +156,14 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
         _isNextCheerPocket = true; 
       }
     } catch (e) {
-      debugPrint("Cheer error: $e"); // Fails silently to prevent disrupting the user experience
+      debugPrint("Cheer error: $e"); 
     }
   }
 
   String get _gifPath {
-    // 1. Force lowercase so we never fail the check
-    String safeSpecies = _species.toLowerCase(); 
-    
-    String f1 = safeSpecies;
+    String f1 = _species.toLowerCase();
     String f2 = _level <= 3 ? 'kitten' : 'cat';
-    
-    // 2. Use the safe, lowercase version to check for 'tabby'
-    String px = safeSpecies == 'tabby' 
-        ? (_level <= 3 ? 'kit_' : 'cat_') 
-        : (_level <= 3 ? 'orkt_' : 'org_');
-        
+    String px = _species == 'Tabby' ? (_level <= 3 ? 'kit_' : 'cat_') : (_level <= 3 ? 'orkt_' : 'org_');
     return 'widgets/$f1/$f2/${px}idle.gif';
   }
 
@@ -194,10 +176,8 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
     });
   }
 
-  // 🔥 Replaced _triggerAIInsight with this to fulfill Goal 1
   void _triggerSavingsTip() async {
     setState(() => _message = "Thinking...");
-
     try {
       String tip = await ApiService.getSavingsTip();
       speak("💡 Tip: $tip");
@@ -255,7 +235,6 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
             child: GestureDetector(
               behavior: HitTestBehavior.opaque, 
               onPanUpdate: (details) {
-                // Goal 1: Stop any active snapping animation if the user grabs the pet mid-flight
                 if (_snapController.isAnimating) {
                   _snapController.stop();
                 }
@@ -271,12 +250,10 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
                 });
               },
               
-              // Goal 1: Trigger Edge Snapping on release
               onPanEnd: (details) {
                 final double leftEdgeDist = _position.dx;
                 final double rightEdgeDist = screenSize.width - _petSize - _position.dx;
                 
-                // Determine which edge is closer
                 final double targetX = leftEdgeDist < rightEdgeDist 
                     ? _edgeMargin 
                     : (screenSize.width - _petSize - _edgeMargin);
@@ -291,7 +268,7 @@ class FloatingPetState extends State<FloatingPet> with SingleTickerProviderState
                 
                 _snapController.forward(from: 0.0);
               },
-              onTap: _triggerSavingsTip, // 🔥 Swapped to the new Savings Tip logic!
+              onTap: _triggerSavingsTip, 
               child: SizedBox(
                 width: _petSize,
                 height: _petSize,

@@ -46,9 +46,6 @@ class ApiService {
     }
   }
 
-  // ===========================================================================
-  // 2. PROFILE DATA
-  // ===========================================================================
   static Future<Map<String, dynamic>> getProfile() async {
     if (isMockData) {
       final String jsonString = await rootBundle.loadString('assets/backend/data/profiles.json');
@@ -60,9 +57,6 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // ===========================================================================
-  // 3. POCKETS (Flora/Plants)
-  // ===========================================================================
   static Future<List<dynamic>> getPockets() async {
     if (isMockData) {
       final String jsonString = await rootBundle.loadString('assets/backend/data/pockets.json');
@@ -74,9 +68,6 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // ===========================================================================
-  // 4. PET STATUS
-  // ===========================================================================
   static Future<Map<String, dynamic>> getPetStatus() async {
     if (isMockData) {
       final String jsonString = await rootBundle.loadString('assets/backend/data/pets.json');
@@ -88,9 +79,6 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // ===========================================================================
-  // 5. TRANSACTIONS
-  // ===========================================================================
   static Future<List<dynamic>> getTransactions() async {
     if (isMockData) {
       final String jsonString = await rootBundle.loadString('assets/backend/data/transactions.json');
@@ -102,6 +90,7 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  // 🔥 Reverted to void, logic moved strictly to the frontend
   static Future<void> postTransaction(Map<String, dynamic> data) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -117,9 +106,6 @@ class ApiService {
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Backend error');
   }
 
-  // ===========================================================================
-  // 6. UPDATE ACTIONS
-  // ===========================================================================
   static Future<void> updatePetStatus(Map<String, dynamic> data) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -139,13 +125,22 @@ class ApiService {
     // 1. SAFEGUARD VALIDATION
     if (data.containsKey('safe_to_spend_balance')) {
       final balance = data['safe_to_spend_balance'];
-      
-      // Ensure it is a number and not negative
       if (balance is! num) {
         throw Exception('Validation Error: safe_to_spend_balance must be a number');
       }
       if (balance < 0) {
         throw Exception('Validation Error: safe_to_spend_balance cannot be negative');
+      }
+    }
+
+    // 🔥 Added reward points validation
+    if (data.containsKey('reward_points')) {
+      final points = data['reward_points'];
+      if (points is! int) {
+        throw Exception('Validation Error: reward_points must be an integer');
+      }
+      if (points < 0) {
+        throw Exception('Validation Error: reward_points cannot be negative');
       }
     }
 
@@ -166,9 +161,6 @@ class ApiService {
     }
   }
 
-  // ===========================================================================
-  // 7. INTERACTIONS & POCKETS
-  // ===========================================================================
   static Future<void> interactWithPet(String action) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -218,7 +210,6 @@ class ApiService {
     if (response.statusCode != 200) throw Exception('Backend error');
   }
 
-  // 🔥 GOAL 1: Validated releasePartialPocket
   static Future<void> releasePartialPocket(String pocketId, double amount) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -264,9 +255,6 @@ class ApiService {
     if (response.statusCode != 200 && response.statusCode != 204) throw Exception('Backend error');
   }
 
-  // ===========================================================================
-  // 8. SAFE TO SPEND BALANCE
-  // ===========================================================================
   static Future<double> getSafeToSpendBalance() async {
     if (isMockData) {
       final String jsonString = await rootBundle.loadString('assets/backend/data/profiles.json');
@@ -293,9 +281,6 @@ class ApiService {
     }
   }
 
-  // ===========================================================================
-  // 9. HABIT TAX
-  // ===========================================================================
   static Future<Map<String, dynamic>> getHabitTax() async {
     if (isMockData) {
       final String jsonString = await rootBundle.loadString('assets/backend/data/habit_tax.json');
@@ -333,9 +318,6 @@ class ApiService {
     if (response.statusCode != 200) throw Exception('Backend error');
   }
 
-  // ===========================================================================
-  // 10. BEHAVIOR ANALYSIS
-  // ===========================================================================
   static Future<String> getBehaviorAnalysis() async {
     if (isMockData) {
       return "Your recent grocery run at Market Street was excellent! By choosing seasonal vegetables, you've saved 15% compared to last week.";
@@ -344,14 +326,11 @@ class ApiService {
     final token = _getAuthToken();
     final response = await http.get(Uri.parse('$baseUrl/ai/behavior'), headers: {'Authorization': 'Bearer $token'});
     if (response.statusCode == 200) {
-      return jsonDecode(response.body)['analysis'] ?? 'Behavior analysis is calculating...';
+      return jsonDecode(response.body)['analysis'] ?? 'Mochi is still calculating...';
     }
     throw Exception('Backend error');
   }
 
-  // ===========================================================================
-  // 11. SAVINGS TIPS (For the Floating Pet)
-  // ===========================================================================
   static final List<String> _savingsTips = [
     "Track every expense using a budgeting app or notebook daily.",
     "Cook meals at home instead of ordering food frequently.",
@@ -447,5 +426,3 @@ class ApiService {
     }
   }
 }
-
-
