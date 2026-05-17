@@ -456,11 +456,21 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
 
                         setDialogState(() => isSaving = true);
                         try {
-                          final latestBalance = await ApiService.getSafeToSpendBalance();
+                          // 🔥 Fetch profile to grab current balance and points dynamically
+                          final profile = await ApiService.getProfile();
+                          final latestBalance = (profile['safe_to_spend_balance'] as num?)?.toDouble() ?? 0.0;
+                          final currentPoints = (profile['reward_points'] as num?)?.toInt() ?? 0;
+                          
                           final newBalance = latestBalance + addedAmount;
+                          const int pointsEarned = 20; // Goal 2: Reward points for adding money
 
-                          await ApiService.updateProfile({'safe_to_spend_balance': newBalance});
+                          // Update both safe_to_spend_balance AND reward_points simultaneously
+                          await ApiService.updateProfile({
+                            'safe_to_spend_balance': newBalance,
+                            'reward_points': currentPoints + pointsEarned
+                          });
 
+                          // Log the transaction so it appears in recent records
                           await ApiService.postTransaction({
                             'category': 'Add Money',
                             'amount': addedAmount,
@@ -472,15 +482,19 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                           if (ctx.mounted) {
                             setState(() => _safeToSpend = newBalance);
                             Navigator.pop(ctx);
+                            
+                            // Show success snackbar with points included
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Row(
                                   children: [
-                                    const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                    const Icon(Icons.stars_rounded, color: Colors.white, size: 20),
                                     const SizedBox(width: 10),
-                                    Text(
-                                      'RM${addedAmount.toStringAsFixed(2)} added to Main Account!',
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    Expanded(
+                                      child: Text(
+                                        'RM${addedAmount.toStringAsFixed(2)} added! +$pointsEarned reward points ✨',
+                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -488,9 +502,13 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
                                 behavior: SnackBarBehavior.floating,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                                duration: const Duration(seconds: 3),
+                                duration: const Duration(seconds: 4),
                               ),
                             );
+                            
+                            // Trigger the pet's celebration globally
+                            rewardPointsEarnedNotifier.value = 0;
+                            rewardPointsEarnedNotifier.value = pointsEarned;
                           }
                         } catch (e) {
                           if (ctx.mounted) {
@@ -521,7 +539,6 @@ class _GardenPageState extends State<GardenPage> with SingleTickerProviderStateM
     );
   }
 
-  // 🔥 Goal 1: Added StatefulBuilder & isProcessing boolean to prevent redundant submissions
   void _showReleaseConfirm(int index, {required bool isFromReleaseButton}) {
     final pocket = _pockets[index];
     final String msg = isFromReleaseButton
