@@ -31,8 +31,8 @@
     "id": "p4",
     "name": "Entertainment Fund (Locked)",
     "target_amount": 500.00,
-    "current_balance": 500.00,
-    "growth_stage": 3,
+    "current_balance": 400.00,
+    "growth_stage": 2,
     "is_locked": true,
     "deduction": 0.00
   },
