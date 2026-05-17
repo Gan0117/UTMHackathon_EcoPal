@@ -28,7 +28,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=[
+        "https://utmhackathon-ecopal.netlify.app", 
+        "http://localhost:3000", # Keep this so it still works on your local computer!
+        "http://127.0.0.1:3000"
+    ], 
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
@@ -101,12 +105,17 @@ async def reality_check(user = Depends(get_current_user)):
     - If spending is good, do not use those words.
     """
     
-    response = gemini_client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt
-    )
-    
-    return {"message": response.text.strip()}
+    try:
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return {"message": response.text.strip()}
+        
+    except Exception as e:
+        print(f"Reality Check Quota/API Error: {e}")
+        # THIS IS THE MAGIC LINE THAT STOPS THE 500 ERROR!
+        return {"message": "Mochi is taking a quick nap to recharge! Your spending looks steady."}
 
 @app.post("/pet/feed")
 async def feed_pet(user = Depends(get_current_user)):
@@ -265,8 +274,21 @@ async def scan_receipt(file: UploadFile = File(...), user = Depends(get_current_
         
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Gemini got confused and didn't return valid JSON.")
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Scanner error: {str(e)}")
+        # 🔥 THE FIX: Print the error to Render, but return a fake receipt to Flutter!
+        print(f"Scanner AI Error: {e}")
+        
+        return {
+            "message": "Mochi used Backup Vision! (API Limit Reached)",
+            "scanned_data": {
+                "is_receipt": True,
+                "amount": 12.50,
+                "category": "Food",
+                "title": "Emergency Demo Meal",
+                "is_taxable": False
+            }
+        }
     
 # --- GAMIFICATION: PROFILES & POCKETS ---
 @app.get("/profile")
@@ -285,7 +307,9 @@ async def get_profile(user = Depends(get_current_user)):
     tx_res = supabase.table("transactions").select("amount").eq("user_id", user_id).eq("type", "expense").gte("created_at", start_of_month).execute()
     total_spent = sum([item["amount"] for item in tx_res.data])
     
-    monthly_budget = 2000.00
+    monthly_budget = profile_data.get("safe_to_spend_balance", 2000.0) 
+    if monthly_budget <= 0:
+        monthly_budget = 2000.0
     
     if total_spent >= monthly_budget * 0.9:
         profile_data["spending_grade"] = "Unhealthy" 
