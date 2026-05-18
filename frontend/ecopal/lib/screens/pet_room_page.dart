@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import 'login_page.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/floating_pet.dart';
+import 'leaderboard_page.dart';
 
 class PetRoomPage extends StatefulWidget {
   const PetRoomPage({super.key});
@@ -200,26 +201,74 @@ class _PetRoomPageState extends State<PetRoomPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.85), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white)),
-                    child: Column(
-                      children: [
-                        Text('$_name (Lvl $_level $_species)', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F5238))),
-                        const SizedBox(height: 12),
-                        
-                        Row(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white),
+                        ),
+                        child: Column(
                           children: [
-                            const Icon(Icons.restaurant, color: Colors.orange, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(child: LinearProgressIndicator(value: _hunger / 100, backgroundColor: Colors.grey.shade300, color: Colors.orange, minHeight: 10, borderRadius: BorderRadius.circular(10))),
+                            Text(
+                              '$_name (Lvl $_level $_species)',
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F5238)),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                const Icon(Icons.restaurant, color: Colors.orange, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: LinearProgressIndicator(
+                                    value: _hunger / 100,
+                                    backgroundColor: Colors.grey.shade300,
+                                    color: Colors.orange,
+                                    minHeight: 10,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
 
+                      // 🏆 Trophy button 在 card 正下方靠右
+                      Padding(
+                        padding: const EdgeInsets.only(right: 24, top: 8),
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const LeaderboardPage()),
+                            );
+                          },
+                          child: Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFFFFD700),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.emoji_events, color: Colors.white, size: 24),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  
                   DragTarget<String>(
                     onAcceptWithDetails: (details) {
                       if (details.data == 'fish_food') _handleFeed();

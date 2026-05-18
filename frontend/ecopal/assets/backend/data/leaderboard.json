@@ -1,0 +1,92 @@
+[
+  {
+    "rank": 1,
+    "user_id": "uid_001",
+    "username": "FluffyPawz",
+    "pet_name": "Nala",
+    "species": "orange",
+    "level": 48,
+    "happiness_level": 95
+  },
+  {
+    "rank": 2,
+    "user_id": "uid_002",
+    "username": "TabbyKing",
+    "pet_name": "Ash",
+    "species": "tabby",
+    "level": 46,
+    "happiness_level": 88
+  },
+  {
+    "rank": 3,
+    "user_id": "uid_003",
+    "username": "GingerLover",
+    "pet_name": "Mochi",
+    "species": "orange",
+    "level": 45,
+    "happiness_level": 82
+  },
+  {
+    "rank": 4,
+    "user_id": "uid_004",
+    "username": "PixelPets",
+    "pet_name": "Cleo",
+    "species": "tabby",
+    "level": 44,
+    "happiness_level": 79
+  },
+  {
+    "rank": 5,
+    "user_id": "uid_005",
+    "username": "SavingsHero",
+    "pet_name": "Ember",
+    "species": "orange",
+    "level": 43,
+    "happiness_level": 91
+  },
+  {
+    "rank": 6,
+    "user_id": "uid_006",
+    "username": "EcoChamp",
+    "pet_name": "Luna",
+    "species": "tabby",
+    "level": 41,
+    "happiness_level": 74
+  },
+  {
+    "rank": 7,
+    "user_id": "uid_007",
+    "username": "BudgetCat",
+    "pet_name": "Ginger",
+    "species": "orange",
+    "level": 39,
+    "happiness_level": 68
+  },
+  {
+    "rank": 8,
+    "user_id": "uid_008",
+    "username": "PlantGrower",
+    "pet_name": "Storm",
+    "species": "tabby",
+    "level": 37,
+    "happiness_level": 85
+  },
+  {
+    "rank": 9,
+    "user_id": "uid_009",
+    "username": "WealthyPaws",
+    "pet_name": "Biscuit",
+    "species": "orange",
+    "level": 35,
+    "happiness_level": 72
+  },
+  {
+    "rank": 10,
+    "user_id": "uid_010",
+    "username": "MoneySaver",
+    "pet_name": "Pebble",
+    "species": "tabby",
+    "level": 33,
+    "happiness_level": 66
+  }
+]

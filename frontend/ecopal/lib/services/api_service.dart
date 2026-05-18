@@ -9,7 +9,9 @@ import 'package:http_parser/http_parser.dart';
 class ApiService {
   static bool isMockData = false;
 
+
   static const String baseUrl = 'https://utmhackathon-ecopal-1.onrender.com';
+   //static const String baseUrl = 'http://127.0.0.1:8000';
 
   static String? _getAuthToken() {
     final session = Supabase.instance.client.auth.currentSession;
@@ -90,7 +92,6 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // 🔥 Reverted to void, logic moved strictly to the frontend
   static Future<void> postTransaction(Map<String, dynamic> data) async {
     if (isMockData) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -122,7 +123,6 @@ class ApiService {
   }
 
   static Future<void> updateProfile(Map<String, dynamic> data) async {
-    // 1. SAFEGUARD VALIDATION
     if (data.containsKey('safe_to_spend_balance')) {
       final balance = data['safe_to_spend_balance'];
       if (balance is! num) {
@@ -133,7 +133,6 @@ class ApiService {
       }
     }
 
-    // 🔥 Added reward points validation
     if (data.containsKey('reward_points')) {
       final points = data['reward_points'];
       if (points is! int) {
@@ -356,6 +355,17 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> scanReceipt(dynamic file) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(seconds: 2));
+      return {
+        "items": [
+          {"name": "Mock Item 1", "price": 12.50},
+          {"name": "Mock Item 2", "price": 8.00}
+        ],
+        "total": 20.50
+      };
+    }
+
     final session = Supabase.instance.client.auth.currentSession;
     final token = session?.accessToken;
 
@@ -400,6 +410,16 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> scanReceiptWeb(String fileName, Uint8List bytes) async {
+    if (isMockData) {
+      await Future.delayed(const Duration(seconds: 2));
+      return {
+        "items": [
+          {"name": "Mock Web Item", "price": 15.00}
+        ],
+        "total": 15.00
+      };
+    }
+
     final session = Supabase.instance.client.auth.currentSession;
     final token = session?.accessToken;
     if (token == null) throw Exception('User not logged in');
@@ -409,12 +429,12 @@ class ApiService {
     request.headers['Authorization'] = 'Bearer $token';
 
     final multipartFile = http.MultipartFile.fromBytes(
-    'file',
-    bytes,
-    filename: fileName,
-    contentType: MediaType.parse(_getMimeType(fileName)),
-  );
-  request.files.add(multipartFile);
+      'file',
+      bytes,
+      filename: fileName,
+      contentType: MediaType.parse(_getMimeType(fileName)),
+    );
+    request.files.add(multipartFile);
 
     var streamedResponse = await request.send();
     var response = await http.Response.fromStream(streamedResponse);
@@ -423,6 +443,27 @@ class ApiService {
       return json.decode(response.body);
     } else {
       throw Exception('Backend AI scan failed: ${response.statusCode}');
+    }
+  }
+
+  static Future<List<dynamic>> getLeaderboard() async {
+    if (isMockData) {
+      final String jsonString = await rootBundle.loadString('assets/backend/data/leaderboard.json'); 
+      return jsonDecode(jsonString);
+    }
+
+    final token = _getAuthToken();
+    if (token == null) throw Exception('User is not logged in.');
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/community/leaderboard'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load leaderboard: ${response.statusCode}');
     }
   }
 }
