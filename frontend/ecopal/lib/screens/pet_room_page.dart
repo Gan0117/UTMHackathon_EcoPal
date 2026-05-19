@@ -238,37 +238,63 @@ class _PetRoomPageState extends State<PetRoomPage> {
                         ),
                       ),
 
-                      // 🏆 Trophy button 在 card 正下方靠右
                       Padding(
-                        padding: const EdgeInsets.only(right: 24, top: 8),
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const LeaderboardPage()),
-                            );
-                          },
-                          child: Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFFFD700),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.25),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
+                      padding: const EdgeInsets.only(right: 24, top: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // 🏆 Leaderboard button
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const LeaderboardPage()),
+                              );
+                            },
+                            child: Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFFFD700),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 3)),
+                                ],
+                              ),
+                              child: const Icon(Icons.emoji_events, color: Colors.white, size: 24),
                             ),
-                            child: const Icon(Icons.emoji_events, color: Colors.white, size: 24),
                           ),
-                        ),
+
+                          const SizedBox(height: 10),
+
+                          // 👥 Add Friend button
+                          GestureDetector(
+                            onTap: () {
+                              // TODO: navigate to add friend page
+                            },
+                            child: Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(0.75),
+                                border: Border.all(color: Colors.black, width: 1.25),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 3)),
+                                ],
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Image.asset('widgets/add_friend.png', fit: BoxFit.contain),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  
+                    ),
+                  ],
+                ),
+
                   DragTarget<String>(
                     onAcceptWithDetails: (details) {
                       if (details.data == 'fish_food') _handleFeed();
